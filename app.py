@@ -1,10 +1,11 @@
 """
-Processador de Prêmio Assiduidade - Revisão Completa
+Processador de Prêmio Assiduidade - Revisão Final
 """
 
 import streamlit as st
 import pandas as pd
 import unicodedata
+import base64  # Importação necessária para gerar o link de download
 from io import BytesIO
 
 # Configurações iniciais
@@ -148,4 +149,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
