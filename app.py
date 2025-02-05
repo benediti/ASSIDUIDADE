@@ -66,53 +66,161 @@ def debug_dataframe(df, name):
         add_to_log(f"Null value counts:\n{null_counts}", 'warning')
 
 def read_excel(file, sheet_name=None, header_row=None):
-    """Lê um arquivo Excel com depuração avançada"""
+    """Lê um arquivo Excel com estratégias robustas de leitura"""
     try:
         add_to_log(f"Tentando ler arquivo: {file.name}", 'debug')
         
-        # Se nenhum header_row for especificado, tenta múltiplas opções
-        if header_row is None:
-            header_options = [0, 1, 2, 3]  # Tenta diferentes linhas de cabeçalho
-        else:
-            header_options = [header_row]
+        # Lê todo o arquivo para inspeção
+        xls = pd.ExcelFile(file)
+        sheet_options = xls.sheet_names if sheet_name is None else [sheet_name]
         
-        for try_header in header_options:
-            try:
-                # Tenta ler a primeira planilha se nenhuma for especificada
-                if sheet_name is None:
-                    xls = pd.ExcelFile(file)
-                    sheet_options = xls.sheet_names
-                else:
-                    sheet_options = [sheet_name]
-                
-                for try_sheet in sheet_options:
-                    add_to_log(f"Tentando ler planilha: {try_sheet}, header na linha: {try_header}", 'debug')
+        # Tenta múltiplas estratégias de leitura
+        strategies = [
+            # Estratégia 1: Sem header, inferir colunas
+            {'header': None, 'names': None},
+            # Estratégia 2: Header na primeira linha
+            {'header': 0},
+            # Estratégia 3: Pular linhas em branco
+            {'header': 0, 'skip_blank_lines': True}
+        ]
+        
+        for sheet in sheet_options:
+            for strategy in strategies:
+                try:
+                    # Copia o dicionário de estratégias para não modificar o original
+                    read_strategy = strategy.copy()
+                    read_strategy['sheet_name'] = sheet
+                    read_strategy['engine'] = 'openpyxl'
                     
-                    df = pd.read_excel(
-                        file, 
-                        sheet_name=try_sheet, 
-                        header=try_header, 
-                        engine='openpyxl'
-                    )
+                    # Lê o DataFrame com a estratégia atual
+                    df = pd.read_excel(**read_strategy)
                     
                     # Remove colunas sem nome
                     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
                     
-                    # Se tem colunas válidas, para de tentar
+                    # Filtra linhas totalmente vazias
+                    df = df.dropna(how='all')
+                    
+                    # Verifica se o DataFrame não está vazio
                     if not df.empty and len(df.columns) > 0:
-                        add_to_log(f"Arquivo '{file.name}' lido com sucesso. Planilha: {try_sheet}, Header linha: {try_header}", 'info')
+                        add_to_log(f"Arquivo '{file.name}' lido com sucesso. Planilha: {sheet}, Estratégia: {strategy}", 'info')
+                        
+                        # Debug detalhado
                         debug_dataframe(df, file.name)
+                        
                         return df
-            
-            except Exception as inner_e:
-                add_to_log(f"Erro ao tentar ler arquivo com header={try_header}: {str(inner_e)}", 'warning')
+                
+                except Exception as inner_e:
+                    add_to_log(f"Falha na leitura com estratégia {strategy}: {str(inner_e)}", 'debug')
         
-        # Se chegar aqui, nenhuma tentativa funcionou
+        # Se chegar aqui, nenhuma estratégia funcionou
         add_to_log(f"Falha total ao ler o arquivo {file.name}", 'error')
         return None
     
     except Exception as e:
         add_to_log(f"Erro fatal ao ler arquivo '{file.name}': {str(e)}\n{traceback.format_exc()}", 'error')
+        return None
+
+def process_data(base_file, absence_file, model_file):
+    """Processa os dados com estratégias robustas"""
+    try:
+        add_to_log("Iniciando processamento de dados", 'info')
+        
+        # Leitura dos arquivos com múltiplas tentativas
+        df_base = read_excel(base_file)
+        df_ausencias = read_excel(absence_file)
+        df_model = read_excel(model_file)
+
+        if df_base is None or df_ausencias is None or df_model is None:
+            add_to_log("Erro: Um ou mais arquivos não foram lidos corretamente.", 'error')
+            return None
+
+        # Mapeamento flexível de nomes de colunas
+        column_mapping = {
+            'Matrícula': ['Matrícula', 'Matricula', 'Codigo', 'Código Funcionário'],
+            'Nome': ['Nome', 'Nome Funcionário', 'nome'],
+            'Código Funcionário': ['Código Funcionário', 'Codigo Funcionario', 'Matrícula']
+        }
+
+        # Função para encontrar a primeira coluna correspondente
+        def find_column(df, possible_names):
+            for name in possible_names:
+                if name in df.columns:
+                    return name
+            return None
+
+        # Renomeia colunas de forma flexível
+        base_cols = {
+            'Código Funcionário': find_column(df_base, column_mapping['Código Funcionário']),
+            'Nome Funcionário': find_column(df_base, column_mapping['Nome'])
+        }
+        
+        ausencias_cols = {
+            'Código Funcionário': find_column(df_ausencias, column_mapping['Código Funcionário']),
+            'Nome Funcionário': find_column(df_ausencias, column_mapping['Nome'])
+        }
+
+        # Renomeia as colunas encontradas
+        for target, source in base_cols.items():
+            if source and source != target:
+                df_base.rename(columns={source: target}, inplace=True)
+        
+        for target, source in ausencias_cols.items():
+            if source and source != target:
+                df_ausencias.rename(columns={source: target}, inplace=True)
+
+        # Processa faltas com estratégia mais flexível
+        df_ausencias = process_faltas(df_ausencias)
+
+        # Merge dos dataframes com estratégia flexível
+        merge_columns = ['Código Funcionário', 'Nome Funcionário']
+        merge_estrategias = [
+            {'on': 'Código Funcionário', 'how': 'left'},
+            {'on': 'Nome Funcionário', 'how': 'left'}
+        ]
+
+        df_merge = None
+        for estrategia in merge_estrategias:
+            try:
+                df_merge = pd.merge(
+                    df_base, 
+                    df_ausencias[merge_columns + ['Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']],
+                    **estrategia
+                )
+                
+                if not df_merge.empty:
+                    break
+            except Exception as e:
+                add_to_log(f"Falha no merge com {estrategia}: {str(e)}", 'warning')
+
+        if df_merge is None or df_merge.empty:
+            add_to_log("Não foi possível fazer o merge dos dados", 'error')
+            return None
+
+        # Calcular prêmio por funcionário
+        resultados = []
+        for _, row in df_merge.iterrows():
+            status, valor = calcular_premio(row)
+            row['Status Prêmio'] = status
+            row['Valor Prêmio'] = valor
+            resultados.append(row)
+
+        df_resultado = pd.DataFrame(resultados)
+
+        # Garante a estrutura do modelo, mesmo com colunas diferentes
+        modelo_colunas = df_model.columns.tolist()
+        for col in modelo_colunas:
+            if col not in df_resultado.columns:
+                df_resultado[col] = None
+
+        # Reordena de acordo com o modelo, ignorando colunas não existentes
+        df_resultado = df_resultado[[col for col in modelo_colunas if col in df_resultado.columns]]
+
+        add_to_log("Processamento concluído com sucesso.", 'info')
+        return df_resultado
+
+    except Exception as e:
+        add_to_log(f"Erro fatal no processamento: {str(e)}\n{traceback.format_exc()}", 'error')
         return None
 
 def normalize_strings(df):
