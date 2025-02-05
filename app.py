@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Revisado para Compatibilidade com Planilhas Base
+Processador de Prêmio Assiduidade - Consolidando Arquivo Base e Ausências
 """
 
 import streamlit as st
@@ -15,158 +15,69 @@ PREMIO_VALOR_PARCIAL = 150.00
 SALARIO_LIMITE = 2542.86
 
 def read_excel(file):
-    """Lê o arquivo Excel e exibe as colunas detectadas"""
+    """Lê o arquivo Excel e retorna o DataFrame"""
     try:
         df = pd.read_excel(file, engine='openpyxl')
-        st.write("Nomes das colunas detectados:", list(df.columns))
         return df
     except Exception as e:
         st.error(f"Erro ao ler arquivo: {str(e)}")
         return None
 
-def normalize_columns(df):
-    """Renomeia colunas para garantir compatibilidade com o código."""
-    column_mapping = {
-        'Matrícula': 'Código Funcionário',
-        'Nome': 'Nome Funcionário',
-        'Centro de Custo Código': 'Código Local',
-        'Centro de Custo Nome': 'Nome Local Funcionário',
-        'Horas': 'Qtd Horas Mensais',
-        'Contrato': 'Tipo Contrato',
-        'Data Término': 'Data Term Contrato',
-        'Experiência': 'Dias Experiência',
-        'Salário': 'Salário Mês Atual'
-    }
-    missing_columns = [col for col in column_mapping.keys() if col not in df.columns]
-    if missing_columns:
-        st.error(f"As seguintes colunas estão ausentes no arquivo: {', '.join(missing_columns)}")
-        return None
-    df = df.rename(columns=column_mapping)
-    return df
-
-def calcular_premio(row, horas_mensais):
+def calcular_premio(row, ausencias):
+    """Calcula o prêmio com base no layout base e nas ausências"""
     try:
-        # Verificar salário
-        salario = row['Salário']
-        if isinstance(salario, str):
-            salario = float(salario.replace('R$', '').replace('.', '').replace(',', '.').strip())
-        
+        salario = row['Salário Mês Atual']
         if salario > SALARIO_LIMITE:
-            return 'NÃO PAGAR - SALÁRIO MAIOR QUE R$ 2.542,86', 0, '#FF0000'
+            return 'NÃO PAGAR - SALÁRIO ALTO', 0
 
-        # Verificar horas mensais
-        horas = horas_mensais
-        if isinstance(horas, str):
-            horas = float(horas.replace(',', '.'))
-
-        valor_base = 0
+        horas = row['Qtd Horas Mensais']
         if horas == 220:
-            valor_base = PREMIO_VALOR_INTEGRAL
+            premio = PREMIO_VALOR_INTEGRAL
         elif horas in [110, 120]:
-            valor_base = PREMIO_VALOR_PARCIAL
+            premio = PREMIO_VALOR_PARCIAL
         else:
-            return 'AVALIAR - HORAS INVÁLIDAS', 0, '#0000FF'
+            return 'AVALIAR - HORAS DIFERENTES', 0
 
-        # Verificar ocorrências
-        if row['Falta'] == '1' or row['Falta'] == 'x':
-            return 'NÃO PAGAR - FALTA', 0, '#FF0000'
+        # Verificar se há ausências
+        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Código Funcionário']]
+        if not funcionario_ausencias.empty:
+            for _, ausencia in funcionario_ausencias.iterrows():
+                if ausencia['Falta'] == 'x' or ausencia['Ausência Integral'] == 'Sim':
+                    return 'NÃO PAGAR - AUSÊNCIA', 0
 
-        if not pd.isna(row['Afastamentos']) and str(row['Afastamentos']).strip():
-            return 'NÃO PAGAR - AFASTAMENTO', 0, '#FF0000'
-
-        if row.get('Ausência Integral', None) == 'Sim' or row.get('Ausência Parcial', None) != '00:00':
-            return 'AVALIAR - AUSÊNCIA', 0, '#0000FF'
-
-        return 'PAGAR', valor_base, '#00FF00'
-
+        return 'PAGAR', premio
     except Exception as e:
         st.error(f"Erro no cálculo do prêmio: {str(e)}")
-        return 'ERRO - VERIFICAR DADOS', 0, '#FF0000'
+        return 'ERRO - VERIFICAR DADOS', 0
 
 def process_data(base_file, absence_file):
-    """Processa os dados dos arquivos e verifica a compatibilidade das colunas"""
+    """Processa os dados do arquivo base e de ausências"""
     try:
+        # Ler arquivos
         df_base = read_excel(base_file)
-        df_base = normalize_columns(df_base)
-        if df_base is None:
-            return None, None
-            
-        df_absence = read_excel(absence_file)
-        df_absence = normalize_columns(df_absence)
-        if df_absence is None:
-            return None, None
+        df_ausencias = read_excel(absence_file)
 
-        base_data = []
-        for _, employee in df_base.iterrows():
-            if pd.isna(employee['Nome Funcionário']):
-                continue
-            
-            horas_mensais = employee.get('Qtd Horas Mensais', 0)
-            
-            base_record = {
-                'Matrícula': employee.get('Código Funcionário', ''),
-                'Nome': employee['Nome Funcionário'],
-                'Cargo': employee.get('Cargo Atual', ''),
-                'Código Local': employee.get('Código Local', ''),
-                'Local': employee.get('Nome Local Funcionário', ''),
-                'Horas Mensais': horas_mensais,
-                'Tipo Contrato': employee.get('Tipo Contrato', ''),
-                'Data Term. Contrato': employee.get('Data Term Contrato', ''),
-                'Dias Experiência': employee.get('Dias Experiência', ''),
-                'Salário': employee.get('Salário Mês Atual', 0),
-                'Ocorrências': []
-            }
-            
-            absences = df_absence[df_absence['Nome Funcionário'] == base_record['Nome']]
-            for _, absence in absences.iterrows():
-                ocorrencia = {
-                    'Data': absence['Dia'],
-                    'Ausência Integral': absence['Ausência integral'],
-                    'Ausência Parcial': absence['Ausência parcial'],
-                    'Afastamentos': absence['Afastamentos'],
-                    'Falta': '1' if absence.get('Falta', '') == 'x' else '0'
-                }
-                base_record['Ocorrências'].append(ocorrencia)
-            
-            base_data.append(base_record)
+        if df_base is None or df_ausencias is None:
+            return None
 
-        final_data = []
-        for employee in base_data:
-            if not employee['Ocorrências']:
-                record = {k: v for k, v in employee.items() if k != 'Ocorrências'}
-                record.update({'Data': None, 'Ausência Integral': None, 'Ausência Parcial': None, 'Afastamentos': None, 'Falta': None})
-                status, valor, cor = calcular_premio(record, employee['Horas Mensais'])
-                record.update({'Status Prêmio': status, 'Valor Prêmio': valor, 'Cor': cor})
-                final_data.append(record)
-            else:
-                for ocorrencia in employee['Ocorrências']:
-                    record = {k: v for k, v in employee.items() if k != 'Ocorrências'}
-                    record.update(ocorrencia)
-                    status, valor, cor = calcular_premio(record, employee['Horas Mensais'])
-                    record.update({'Status Prêmio': status, 'Valor Prêmio': valor, 'Cor': cor})
-                    final_data.append(record)
+        # Padronizar colunas
+        df_base.columns = df_base.iloc[0]
+        df_base = df_base[1:]
 
-        df_final = pd.DataFrame(final_data)
-        df_resumo = df_final.groupby('Matrícula').agg({
-            'Nome': 'first',
-            'Cargo': 'first',
-            'Código Local': 'first',
-            'Local': 'first',
-            'Horas Mensais': 'first',
-            'Tipo Contrato': 'first',
-            'Data Term. Contrato': 'first',
-            'Dias Experiência': 'first',
-            'Salário': 'first',
-            'Status Prêmio': lambda x: '; '.join(x.unique()),
-            'Valor Prêmio': 'max',
-            'Cor': 'first'
-        }).reset_index()
+        # Realizar os cálculos
+        resultados = []
+        for _, row in df_base.iterrows():
+            status, valor = calcular_premio(row, df_ausencias)
+            row['Status Prêmio'] = status
+            row['Valor Prêmio'] = valor
+            resultados.append(row)
 
-        return df_resumo, df_final
+        df_resultado = pd.DataFrame(resultados)
 
+        return df_resultado
     except Exception as e:
         st.error(f"Erro ao processar dados: {str(e)}")
-        return None, None
+        return None
 
 def download_link(df, filename):
     """Cria link para download do arquivo"""
@@ -195,23 +106,16 @@ def main():
     if base_file and absence_file:
         if st.button("Processar Dados"):
             with st.spinner('Processando dados...'):
-                df_resumo, df_detalhado = process_data(base_file, absence_file)
+                df_resultado = process_data(base_file, absence_file)
                 
-                if df_resumo is not None and df_detalhado is not None:
+                if df_resultado is not None:
                     st.success("Dados processados com sucesso!")
                     
-                    st.markdown("### Resumo por Funcionário")
-                    st.dataframe(df_resumo)
+                    st.markdown("### Resultado Consolidado")
+                    st.dataframe(df_resultado)
                     
-                    st.markdown("### Detalhes das Ocorrências")
-                    st.dataframe(df_detalhado)
-                    
-                    st.markdown("### Downloads")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(download_link(df_resumo, "resumo_assiduidade.csv"), unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(download_link(df_detalhado, "detalhes_assiduidade.csv"), unsafe_allow_html=True)
+                    st.markdown("### Download do Arquivo")
+                    st.markdown(download_link(df_resultado, "resultado_assiduidade_consolidado.csv"), unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
