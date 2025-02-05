@@ -7,17 +7,30 @@ st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide
 
 def read_excel(file):
     try:
-        # Tenta ler com openpyxl primeiro (para xlsx)
-        df = pd.read_excel(file, engine='openpyxl')
+        # Ler o arquivo com nomes de colunas personalizados
+        df = pd.read_excel(
+            file,
+            engine='openpyxl',
+            header=None  # Não usar primeira linha como cabeçalho
+        )
+        
+        # Pular as primeiras linhas se necessário
+        if 'Premio Assiduidade' in str(df.iloc[0:3].values):
+            # Encontrar a linha que contém os cabeçalhos
+            for idx, row in df.iterrows():
+                if 'Premio Assiduidade' in str(row.values):
+                    df = pd.read_excel(
+                        file,
+                        engine='openpyxl',
+                        header=idx,
+                        names=['Código', 'Nome', 'Cargo', 'Cód. Local', 'Local', 
+                               'Horas', 'Tipo Contrato', 'Data Term', 'Dias Exp', 'Salário']
+                    )
+                    break
+        return df
     except Exception as e:
-        try:
-            # Se falhar, tenta com xlrd (para xls)
-            df = pd.read_excel(file, engine='xlrd')
-        except Exception as e:
-            st.error(f"Erro ao ler arquivo: {str(e)}")
-            st.error("Por favor, converta o arquivo para .xlsx e tente novamente")
-            return None
-    return df
+        st.error(f"Erro ao ler arquivo: {str(e)}")
+        return None
 
 def process_data(base_file, absence_file):
     try:
@@ -26,19 +39,19 @@ def process_data(base_file, absence_file):
         if df_base is None:
             return None
             
-        df_absence = read_excel(absence_file)
+        df_absence = pd.read_excel(absence_file, engine='openpyxl')
         if df_absence is None:
             return None
 
         # Filtrar linhas válidas do arquivo base
-        df_base = df_base[df_base['Premio Assiduidade'].notna()]
+        df_base = df_base[df_base['Código'].notna()]
 
         # Processar dados
         processed_data = []
         
         for _, employee in df_base.iterrows():
-            matricula = str(employee['Premio Assiduidade'])
-            nome = employee['__EMPTY']
+            matricula = str(employee['Código'])
+            nome = employee['Nome']
             
             # Encontrar ausências do funcionário
             absences = df_absence[df_absence['Nome'] == nome]
@@ -47,14 +60,13 @@ def process_data(base_file, absence_file):
             employee_record = {
                 'Matrícula': matricula,
                 'Nome': nome,
-                'Cargo': employee['__EMPTY_1'],
-                'Código Local': employee['__EMPTY_2'],
-                'Local': employee['__EMPTY_3'],
-                'Horas Mensais': employee['__EMPTY_4'],
-                'Tipo Contrato': employee['__EMPTY_5'],
-                'Data Term. Contrato': employee['__EMPTY_6'],
-                'Dias Experiência': employee['__EMPTY_7'],
-                'Salário': employee['__EMPTY_8']
+                'Cargo': employee['Cargo'],
+                'Local': employee['Local'],
+                'Horas': employee['Horas'],
+                'Tipo Contrato': employee['Tipo Contrato'],
+                'Data Term.': employee['Data Term'],
+                'Dias Exp.': employee['Dias Exp'],
+                'Salário': employee['Salário']
             }
             
             # Adicionar ocorrências
@@ -75,6 +87,8 @@ def process_data(base_file, absence_file):
         return pd.DataFrame(processed_data)
     except Exception as e:
         st.error(f"Erro ao processar dados: {str(e)}")
+        st.error("Detalhes do erro para debug:")
+        st.write(e)
         return None
 
 def download_link(df, filename):
@@ -93,11 +107,11 @@ def main():
     
     with col1:
         st.markdown("#### Arquivo Base (Premio Assiduidade)")
-        base_file = st.file_uploader("Escolha o arquivo base", type=['xlsx'])
+        base_file = st.file_uploader("Escolha o arquivo base", type=['xlsx', 'xls'])
 
     with col2:
         st.markdown("#### Arquivo de Ausências")
-        absence_file = st.file_uploader("Escolha o arquivo de ausências", type=['xlsx'])
+        absence_file = st.file_uploader("Escolha o arquivo de ausências", type=['xlsx', 'xls'])
 
     if base_file and absence_file:
         if st.button("Processar Dados"):
