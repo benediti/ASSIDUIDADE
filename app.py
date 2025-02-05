@@ -5,18 +5,31 @@ import base64
 
 st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide")
 
+PREMIO_VALOR = 300.00
+
+def calcular_premio(row):
+    if pd.isna(row['Data']) and pd.isna(row['Ausência Integral']) and \
+       pd.isna(row['Ausência Parcial']) and pd.isna(row['Afastamentos']) and \
+       pd.isna(row['Falta']):
+        return ('PAGAR', PREMIO_VALOR, '#00FF00')  # Verde
+    elif row['Falta'] == '1':
+        return ('NÃO PAGAR - FALTA', 0, '#FF0000')  # Vermelho
+    elif not pd.isna(row['Afastamentos']):
+        return ('NÃO PAGAR - AFASTAMENTO', 0, '#FF0000')  # Vermelho
+    elif not pd.isna(row['Ausência Integral']) or not pd.isna(row['Ausência Parcial']):
+        return ('AVALIAR - AUSÊNCIA', 0, '#0000FF')  # Azul
+    else:
+        return ('AVALIAR', 0, '#0000FF')  # Azul
+
 def read_excel(file):
     try:
-        # Ler o arquivo com nomes de colunas personalizados
         df = pd.read_excel(
             file,
             engine='openpyxl',
-            header=None  # Não usar primeira linha como cabeçalho
+            header=None
         )
         
-        # Pular as primeiras linhas se necessário
         if 'Premio Assiduidade' in str(df.iloc[0:3].values):
-            # Encontrar a linha que contém os cabeçalhos
             for idx, row in df.iterrows():
                 if 'Premio Assiduidade' in str(row.values):
                     df = pd.read_excel(
@@ -34,7 +47,6 @@ def read_excel(file):
 
 def process_data(base_file, absence_file):
     try:
-        # Ler arquivos
         df_base = read_excel(base_file)
         if df_base is None:
             return None
@@ -43,20 +55,15 @@ def process_data(base_file, absence_file):
         if df_absence is None:
             return None
 
-        # Filtrar linhas válidas do arquivo base
         df_base = df_base[df_base['Código'].notna()]
-
-        # Processar dados
         processed_data = []
         
         for _, employee in df_base.iterrows():
             matricula = str(employee['Código'])
             nome = employee['Nome']
             
-            # Encontrar ausências do funcionário
             absences = df_absence[df_absence['Nome'] == nome]
             
-            # Criar registro do funcionário
             employee_record = {
                 'Matrícula': matricula,
                 'Nome': nome,
@@ -69,7 +76,6 @@ def process_data(base_file, absence_file):
                 'Salário': employee['Salário']
             }
             
-            # Adicionar ocorrências
             if not absences.empty:
                 for _, absence in absences.iterrows():
                     record = employee_record.copy()
@@ -80,9 +86,29 @@ def process_data(base_file, absence_file):
                         'Afastamentos': absence['Afastamentos'],
                         'Falta': '1' if absence['Falta'] == 'x' else '0'
                     })
+                    status, valor, cor = calcular_premio(record)
+                    record.update({
+                        'Status Prêmio': status,
+                        'Valor Prêmio': valor,
+                        'Cor': cor
+                    })
                     processed_data.append(record)
             else:
-                processed_data.append(employee_record)
+                record = employee_record.copy()
+                record.update({
+                    'Data': None,
+                    'Ausência Integral': None,
+                    'Ausência Parcial': None,
+                    'Afastamentos': None,
+                    'Falta': None
+                })
+                status, valor, cor = calcular_premio(record)
+                record.update({
+                    'Status Prêmio': status,
+                    'Valor Prêmio': valor,
+                    'Cor': cor
+                })
+                processed_data.append(record)
 
         return pd.DataFrame(processed_data)
     except Exception as e:
@@ -121,9 +147,15 @@ def main():
                 if df_processed is not None:
                     st.success("Dados processados com sucesso!")
                     
-                    # Mostrar dados
+                    # Mostrar dados com cores
                     st.markdown("### 2. Visualização dos Dados")
-                    st.dataframe(df_processed)
+                    
+                    # Converter DataFrame para HTML com cores
+                    def highlight_rows(row):
+                        return ['background-color: ' + row['Cor']] * len(row)
+                    
+                    styled_df = df_processed.style.apply(highlight_rows, axis=1)
+                    st.dataframe(styled_df)
                     
                     # Link para download
                     st.markdown("### 3. Download dos Resultados")
@@ -131,18 +163,26 @@ def main():
                     
                     # Estatísticas
                     st.markdown("### 4. Estatísticas")
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
-                        st.metric("Total de Funcionários", len(df_processed['Matrícula'].unique()))
+                        total_func = len(df_processed['Matrícula'].unique())
+                        st.metric("Total de Funcionários", total_func)
                     
                     with col2:
-                        faltas = df_processed[df_processed['Falta'] == '1']
-                        st.metric("Total de Faltas", len(faltas))
+                        total_pagar = len(df_processed[df_processed['Status Prêmio'] == 'PAGAR'])
+                        st.metric("Receberão Prêmio", total_pagar)
                     
                     with col3:
-                        afastamentos = df_processed[df_processed['Afastamentos'].notna()]
-                        st.metric("Total de Afastamentos", len(afastamentos))
+                        total_nao_pagar = len(df_processed[df_processed['Status Prêmio'].str.startswith('NÃO PAGAR')])
+                        st.metric("Não Receberão", total_nao_pagar)
+                    
+                    with col4:
+                        total_avaliar = len(df_processed[df_processed['Status Prêmio'].str.startswith('AVALIAR')])
+                        st.metric("Para Avaliar", total_avaliar)
+                    
+                    # Valor total dos prêmios
+                    st.metric("Valor Total de Prêmios", f"R$ {df_processed['Valor Prêmio'].sum():,.2f}")
 
 if __name__ == "__main__":
     main()
