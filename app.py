@@ -5,11 +5,30 @@ import base64
 
 st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide")
 
+def read_excel(file):
+    try:
+        # Tenta ler com openpyxl primeiro (para xlsx)
+        df = pd.read_excel(file, engine='openpyxl')
+    except Exception as e:
+        try:
+            # Se falhar, tenta com xlrd (para xls)
+            df = pd.read_excel(file, engine='xlrd')
+        except Exception as e:
+            st.error(f"Erro ao ler arquivo: {str(e)}")
+            st.error("Por favor, converta o arquivo para .xlsx e tente novamente")
+            return None
+    return df
+
 def process_data(base_file, absence_file):
     try:
         # Ler arquivos
-        df_base = pd.read_excel(base_file)
-        df_absence = pd.read_excel(absence_file)
+        df_base = read_excel(base_file)
+        if df_base is None:
+            return None
+            
+        df_absence = read_excel(absence_file)
+        if df_absence is None:
+            return None
 
         # Filtrar linhas válidas do arquivo base
         df_base = df_base[df_base['Premio Assiduidade'].notna()]
@@ -68,16 +87,17 @@ def main():
     st.title("Processador de Prêmio Assiduidade")
     
     st.markdown("### 1. Upload dos Arquivos")
+    st.warning("Nota: Para melhor compatibilidade, use arquivos no formato .xlsx")
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("#### Arquivo Base (Premio Assiduidade)")
-        base_file = st.file_uploader("Escolha o arquivo base", type=['xls', 'xlsx'])
+        base_file = st.file_uploader("Escolha o arquivo base", type=['xlsx'])
 
     with col2:
         st.markdown("#### Arquivo de Ausências")
-        absence_file = st.file_uploader("Escolha o arquivo de ausências", type=['xls', 'xlsx'])
+        absence_file = st.file_uploader("Escolha o arquivo de ausências", type=['xlsx'])
 
     if base_file and absence_file:
         if st.button("Processar Dados"):
