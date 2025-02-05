@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Ajuste de Vírgulas e Colunas
+Processador de Prêmio Assiduidade - Ajuste Final com Regras e Layout Personalizado
 """
 
 import streamlit as st
@@ -34,32 +34,36 @@ def normalize_column_values(df):
         st.error(f"Erro ao normalizar valores das colunas: {str(e)}")
         return df
 
-def calcular_premio(row, ausencias):
-    """Calcula o prêmio com base no layout base e nas ausências"""
+def calcular_premio(row):
+    """Calcula o prêmio com base nas regras de assiduidade"""
     try:
+        # Regra 1: Salário acima do limite
         salario = float(row['Salário Mês Atual'])
         if salario > SALARIO_LIMITE:
-            return 'NÃO PAGAR - SALÁRIO ALTO', 0
+            return 'NÃO PAGAR - SALÁRIO MAIOR', 0, 'red'
 
+        # Regra 2: Ausências, faltas ou afastamentos
+        if pd.notna(row['Falta']) or pd.notna(row['Afastamentos']) or pd.notna(row['Ausência Integral']) or pd.notna(row['Ausência Parcial']):
+            if pd.notna(row['Falta']):
+                return 'NÃO PAGAR - FALTA', 0, 'red'
+            if pd.notna(row['Afastamentos']):
+                return 'NÃO PAGAR - AFASTAMENTO', 0, 'red'
+            if pd.notna(row['Ausência Integral']) or pd.notna(row['Ausência Parcial']):
+                return 'AVALIAR - AUSÊNCIA', 0, 'blue'
+
+        # Regra 3: Verificação de horas
         horas = int(row['Qtd Horas Mensais'])
         if horas == 220:
-            premio = PREMIO_VALOR_INTEGRAL
+            return 'PAGAR', PREMIO_VALOR_INTEGRAL, 'green'
         elif horas in [110, 120]:
-            premio = PREMIO_VALOR_PARCIAL
-        else:
-            return 'AVALIAR - HORAS DIFERENTES', 0
+            return 'PAGAR', PREMIO_VALOR_PARCIAL, 'green'
 
-        # Verificar se há ausências
-        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Código Funcionário']]
-        if not funcionario_ausencias.empty:
-            for _, ausencia in funcionario_ausencias.iterrows():
-                if ausencia['Falta'] == 'x' or ausencia['Ausência integral'] == 'Sim':
-                    return 'NÃO PAGAR - AUSÊNCIA', 0
+        # Caso todas as colunas estejam em branco (nenhuma ocorrência)
+        return 'PAGAR - SEM OCORRÊNCIAS', PREMIO_VALOR_INTEGRAL, 'green'
 
-        return 'PAGAR', premio
     except Exception as e:
         st.error(f"Erro no cálculo do prêmio: {str(e)}")
-        return 'ERRO - VERIFICAR DADOS', 0
+        return 'ERRO - VERIFICAR DADOS', 0, 'red'
 
 def process_data(base_file, absence_file):
     """Processa os dados do arquivo base e de ausências"""
@@ -75,15 +79,32 @@ def process_data(base_file, absence_file):
         df_base = normalize_column_values(df_base)
         df_ausencias = normalize_column_values(df_ausencias)
 
+        # Consolidar informações de ausências no arquivo base
+        df_base['Falta'] = df_ausencias['Falta']
+        df_base['Afastamentos'] = df_ausencias['Afastamentos']
+        df_base['Ausência Integral'] = df_ausencias['Ausência integral']
+        df_base['Ausência Parcial'] = df_ausencias['Ausência parcial']
+
         # Realizar os cálculos
         resultados = []
         for _, row in df_base.iterrows():
-            status, valor = calcular_premio(row, df_ausencias)
+            status, valor, cor = calcular_premio(row)
             row['Status Prêmio'] = status
             row['Valor Prêmio'] = valor
+            row['Cor'] = cor
             resultados.append(row)
 
         df_resultado = pd.DataFrame(resultados)
+
+        # Ordenar colunas no formato solicitado
+        colunas_ordem = [
+            'Código Funcionário', 'Nome Funcionário', 'Cargo Atual', 'Código Local',
+            'Nome Local Funcionário', 'Tipo Contrato', 'Data Term Contrato', 
+            'Dias Experiência', 'Salário Mês Atual', 'Qtd Horas Mensais',
+            'Status Prêmio', 'Valor Prêmio'
+        ]
+        colunas_adicionais = [col for col in df_resultado.columns if col not in colunas_ordem]
+        df_resultado = df_resultado[colunas_ordem + colunas_adicionais]
 
         return df_resultado
     except Exception as e:
@@ -123,7 +144,9 @@ def main():
                     st.success("Dados processados com sucesso!")
                     
                     st.markdown("### Resultado Consolidado")
-                    st.dataframe(df_resultado)
+                    st.dataframe(df_resultado.style.apply(
+                        lambda x: [f'background-color: {x["Cor"]}' for _ in x], axis=1
+                    ))
                     
                     st.markdown("### Download do Arquivo")
                     st.markdown(download_link(df_resultado, "resultado_assiduidade_consolidado.csv"), unsafe_allow_html=True)
