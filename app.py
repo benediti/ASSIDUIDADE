@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Consolidando Arquivo Base e Ausências
+Processador de Prêmio Assiduidade - Ajustado para Erros de Leitura e Reindexação
 """
 
 import streamlit as st
@@ -17,10 +17,43 @@ SALARIO_LIMITE = 2542.86
 def read_excel(file):
     """Lê o arquivo Excel e retorna o DataFrame"""
     try:
-        df = pd.read_excel(file, engine='openpyxl')
+        df = pd.read_excel(file, engine='openpyxl', header=None)
+        st.write("Pré-visualização do arquivo:", df.head(10))
         return df
     except Exception as e:
         st.error(f"Erro ao ler arquivo: {str(e)}")
+        return None
+
+def process_base(df):
+    """Processa o arquivo base para ajustar o cabeçalho e as colunas"""
+    try:
+        # Encontrar linha com o cabeçalho correto
+        for i in range(len(df)):
+            if "Salário" in df.iloc[i].values:
+                df.columns = df.iloc[i]
+                df = df[i + 1:].reset_index(drop=True)
+                break
+        else:
+            st.error("Não foi possível encontrar o cabeçalho correto no arquivo base.")
+            return None
+
+        # Renomear colunas importantes
+        column_mapping = {
+            'Matrícula': 'Código Funcionário',
+            'Nome': 'Nome Funcionário',
+            'Centro de Custo Código': 'Código Local',
+            'Centro de Custo Nome': 'Nome Local Funcionário',
+            'Horas': 'Qtd Horas Mensais',
+            'Contrato': 'Tipo Contrato',
+            'Data Término': 'Data Term Contrato',
+            'Experiência': 'Dias Experiência',
+            'Salário': 'Salário Mês Atual'
+        }
+        df = df.rename(columns=column_mapping)
+        st.write("Colunas processadas:", df.columns)
+        return df
+    except Exception as e:
+        st.error(f"Erro ao processar arquivo base: {str(e)}")
         return None
 
 def calcular_premio(row, ausencias):
@@ -39,7 +72,7 @@ def calcular_premio(row, ausencias):
             return 'AVALIAR - HORAS DIFERENTES', 0
 
         # Verificar se há ausências
-        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Código Funcionário']]
+        funcionario_ausencias = ausencias[ausencias['Código Funcionário'] == row['Código Funcionário']]
         if not funcionario_ausencias.empty:
             for _, ausencia in funcionario_ausencias.iterrows():
                 if ausencia['Falta'] == 'x' or ausencia['Ausência Integral'] == 'Sim':
@@ -54,15 +87,16 @@ def process_data(base_file, absence_file):
     """Processa os dados do arquivo base e de ausências"""
     try:
         # Ler arquivos
-        df_base = read_excel(base_file)
+        df_base_raw = read_excel(base_file)
         df_ausencias = read_excel(absence_file)
 
-        if df_base is None or df_ausencias is None:
+        if df_base_raw is None or df_ausencias is None:
             return None
 
-        # Padronizar colunas
-        df_base.columns = df_base.iloc[0]
-        df_base = df_base[1:]
+        # Processar layout do arquivo base
+        df_base = process_base(df_base_raw)
+        if df_base is None:
+            return None
 
         # Realizar os cálculos
         resultados = []
@@ -119,3 +153,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
