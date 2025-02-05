@@ -1,11 +1,11 @@
 """
-Processador de Prêmio Assiduidade - Revisão Final
+Processador de Prêmio Assiduidade - Correção de Importação e Exportação
 """
 
 import streamlit as st
 import pandas as pd
 import unicodedata
-import base64  # Importação necessária para gerar o link de download
+import base64
 from io import BytesIO
 
 # Configurações iniciais
@@ -20,10 +20,12 @@ def read_excel(file, header_row=None):
     """Lê o arquivo Excel e retorna o DataFrame com o cabeçalho especificado"""
     try:
         df = pd.read_excel(file, engine='openpyxl', header=header_row)
+        st.write(f"Pré-visualização do arquivo ({file.name}):")
+        st.dataframe(df.head())
         st.write("Colunas detectadas no arquivo:", df.columns.tolist())
         return df
     except Exception as e:
-        st.error(f"Erro ao ler arquivo: {str(e)}")
+        st.error(f"Erro ao ler arquivo {file.name}: {str(e)}")
         return None
 
 def normalize_strings(df):
@@ -39,19 +41,19 @@ def normalize_strings(df):
 def calcular_premio(row):
     """Calcula o prêmio com base nas regras de assiduidade"""
     try:
-        salario = float(row['Salário Mês Atual'])
+        salario = float(row.get('Salário Mês Atual', 0))
         if salario > SALARIO_LIMITE:
             return 'NÃO PAGAR - SALÁRIO MAIOR', 0
 
-        if pd.notna(row.get('Falta')) or pd.notna(row.get('Afastamentos')) or pd.notna(row.get('Ausência Integral')) or pd.notna(row.get('Ausência Parcial')):
-            if pd.notna(row.get('Falta')):
+        if row.get('Falta', None) or row.get('Afastamentos', None) or row.get('Ausência Integral', None) or row.get('Ausência Parcial', None):
+            if row.get('Falta', None):
                 return 'NÃO PAGAR - FALTA', 0
-            if pd.notna(row.get('Afastamentos')):
+            if row.get('Afastamentos', None):
                 return 'NÃO PAGAR - AFASTAMENTO', 0
-            if pd.notna(row.get('Ausência Integral')) or pd.notna(row.get('Ausência Parcial')):
+            if row.get('Ausência Integral', None) or row.get('Ausência Parcial', None):
                 return 'AVALIAR - AUSÊNCIA', 0
 
-        horas = int(row['Qtd Horas Mensais'])
+        horas = int(row.get('Qtd Horas Mensais', 0))
         if horas == 220:
             return 'PAGAR', PREMIO_VALOR_INTEGRAL
         elif horas in [110, 120]:
@@ -66,6 +68,7 @@ def calcular_premio(row):
 def process_data(base_file, absence_file, model_file):
     """Processa os dados do arquivo base e de ausências e usa o modelo fornecido"""
     try:
+        # Ler arquivos
         df_base = read_excel(base_file, header_row=2)
         df_ausencias = read_excel(absence_file)
         df_model = read_excel(model_file)
@@ -73,16 +76,17 @@ def process_data(base_file, absence_file, model_file):
         if df_base is None or df_ausencias is None or df_model is None:
             return None
 
+        # Normalizar valores e strings
         df_base = normalize_strings(df_base)
         df_ausencias = normalize_strings(df_ausencias)
 
-        df_base['Falta'] = df_ausencias.get('Falta', pd.Series([None] * len(df_base)))
-        df_base['Afastamentos'] = df_ausencias.get('Afastamentos', pd.Series([''] * len(df_base))).apply(
-            lambda x: '; '.join(str(x).split(';')).strip() if pd.notna(x) else ''
-        )
-        df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', pd.Series([None] * len(df_base)))
-        df_base['Ausência Parcial'] = df_ausencias.get('Ausência parcial', pd.Series([None] * len(df_base)))
+        # Consolidação de ausências
+        df_base['Falta'] = df_ausencias.get('Falta', None)
+        df_base['Afastamentos'] = df_ausencias.get('Afastamentos', None)
+        df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', None)
+        df_base['Ausência Parcial'] = df_ausencias.get('Ausência parcial', None)
 
+        # Calcular prêmio por funcionário
         resultados = []
         for _, row in df_base.iterrows():
             status, valor = calcular_premio(row)
@@ -92,12 +96,15 @@ def process_data(base_file, absence_file, model_file):
 
         df_resultado = pd.DataFrame(resultados)
 
+        # Ajustar para o modelo fornecido
         for col in df_model.columns:
             if col not in df_resultado.columns:
                 df_resultado[col] = None
 
         df_resultado = df_resultado[df_model.columns]
 
+        st.write("Pré-visualização do resultado consolidado:")
+        st.dataframe(df_resultado.head())
         return df_resultado
     except Exception as e:
         st.error(f"Erro ao processar dados: {str(e)}")
@@ -149,5 +156,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
