@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Ajuste para Coluna 'Código'
+Processador de Prêmio Assiduidade - Ajuste de Vírgulas e Colunas
 """
 
 import streamlit as st
@@ -24,14 +24,24 @@ def read_excel(file, header_row=0):
         st.error(f"Erro ao ler arquivo: {str(e)}")
         return None
 
+def normalize_column_values(df):
+    """Normaliza os valores numéricos para remover vírgulas"""
+    try:
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col] = df[col].str.replace(",", ".", regex=False).str.strip()
+        return df
+    except Exception as e:
+        st.error(f"Erro ao normalizar valores das colunas: {str(e)}")
+        return df
+
 def calcular_premio(row, ausencias):
     """Calcula o prêmio com base no layout base e nas ausências"""
     try:
-        salario = row['Salário Mês Atual']
+        salario = float(row['Salário Mês Atual'])
         if salario > SALARIO_LIMITE:
             return 'NÃO PAGAR - SALÁRIO ALTO', 0
 
-        horas = row['Qtd Horas Mensais']
+        horas = int(row['Qtd Horas Mensais'])
         if horas == 220:
             premio = PREMIO_VALOR_INTEGRAL
         elif horas in [110, 120]:
@@ -40,10 +50,10 @@ def calcular_premio(row, ausencias):
             return 'AVALIAR - HORAS DIFERENTES', 0
 
         # Verificar se há ausências
-        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Matrícula']]
+        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Código Funcionário']]
         if not funcionario_ausencias.empty:
             for _, ausencia in funcionario_ausencias.iterrows():
-                if ausencia['Falta'] == 'x' or ausencia['Ausência Integral'] == 'Sim':
+                if ausencia['Falta'] == 'x' or ausencia['Ausência integral'] == 'Sim':
                     return 'NÃO PAGAR - AUSÊNCIA', 0
 
         return 'PAGAR', premio
@@ -60,6 +70,10 @@ def process_data(base_file, absence_file):
 
         if df_base is None or df_ausencias is None:
             return None
+
+        # Normalizar valores
+        df_base = normalize_column_values(df_base)
+        df_ausencias = normalize_column_values(df_ausencias)
 
         # Realizar os cálculos
         resultados = []
@@ -116,4 +130,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
