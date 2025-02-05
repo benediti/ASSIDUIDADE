@@ -331,3 +331,26 @@ def main():
                     
                     # Área de debug para mostrar informações detalhadas
                     with debug_area:
+                        st.write("Registros processados:", len(df_resultado))
+                        st.dataframe(df_resultado.head())
+                    
+                    # Exportação do resultado
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        df_resultado.to_excel(writer, index=False, sheet_name='Resultado')
+                    output.seek(0)
+
+                    st.download_button("Baixar Relatório", data=output, file_name="resultado_assiduidade.xlsx")
+                else:
+                    st.error("Falha no processamento. Verifique os logs.")
+
+            # Sempre mostra o log
+            st.download_button("Baixar Log Detalhado", data=generate_log_file(), file_name="log_processamento_debug.txt")
+            
+            # Mostra os logs na interface
+            with st.expander("Logs de Processamento"):
+                for log in log_messages:
+                    st.text(log)
+
+if __name__ == "__main__":
+    main()
