@@ -1,12 +1,12 @@
 """
-Processador de Prêmio Assiduidade - Adicionado Log para Download
+Processador de Prêmio Assiduidade - Correção para Falta de Coluna "Falta"
 """
 
 import streamlit as st
 import pandas as pd
 import unicodedata
 import base64
-from io import BytesIO, StringIO
+from io import BytesIO
 
 # Configurações iniciais
 st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide")
@@ -51,13 +51,14 @@ def normalize_strings(df):
         return df
 
 def process_faltas(df):
-    """Converte 'x' na coluna 'Falta' para o valor 1"""
+    """Converte 'x' na coluna 'Falta' para o valor 1, e cria a coluna se não existir"""
     try:
         if 'Falta' in df.columns:
             df['Falta'] = df['Falta'].apply(lambda x: str(x).count('x') if isinstance(x, str) else 0)
             add_to_log("Coluna 'Falta' processada: valores 'x' convertidos para 1.")
         else:
-            add_to_log("Coluna 'Falta' não encontrada no arquivo.")
+            df['Falta'] = 0  # Se a coluna não existe, assume que não há faltas
+            add_to_log("Coluna 'Falta' não encontrada no arquivo. Criando a coluna com valores zerados.")
         return df
     except Exception as e:
         add_to_log(f"Erro ao processar faltas: {str(e)}")
@@ -66,7 +67,7 @@ def process_faltas(df):
 def calcular_premio(row):
     """Calcula o prêmio com base nas regras de assiduidade"""
     try:
-        salario = float(row.get('Salário Mês Atual', 0))
+        salario = float(row.get('Salário Mês Atual', 0) or 0)
         if salario > SALARIO_LIMITE:
             return 'NÃO PAGAR - SALÁRIO MAIOR', 0
 
@@ -78,7 +79,7 @@ def calcular_premio(row):
             if row.get('Ausência Integral', None) or row.get('Ausência Parcial', None):
                 return 'AVALIAR - AUSÊNCIA', 0
 
-        horas = int(row.get('Qtd Horas Mensais', 0))
+        horas = int(row.get('Qtd Horas Mensais', 0) or 0)
         if horas == 220:
             return 'PAGAR', PREMIO_VALOR_INTEGRAL
         elif horas in [110, 120]:
@@ -106,7 +107,7 @@ def process_data(base_file, absence_file, model_file):
 
         # Processar faltas e consolidar ausências
         df_ausencias = process_faltas(df_ausencias)
-        df_base['Falta'] = df_ausencias.get('Falta', None)
+        df_base['Falta'] = df_ausencias['Falta']
         df_base['Afastamentos'] = df_ausencias.get('Afastamentos', None)
         df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', None)
         df_base['Ausência Parcial'] = df_ausencias.get('Ausência parcial', None)
@@ -134,20 +135,6 @@ def process_data(base_file, absence_file, model_file):
         add_to_log(f"Erro ao processar dados: {str(e)}")
         return None
 
-def download_xlsx(df, filename):
-    """Cria link para download do arquivo XLSX"""
-    try:
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Resultado')
-        xlsx_data = output.getvalue()
-        b64 = base64.b64encode(xlsx_data).decode()
-        href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}">Download {filename}</a>'
-        return href
-    except Exception as e:
-        add_to_log(f"Erro ao criar link de download XLSX: {str(e)}")
-        return None
-
 def main():
     st.title("Processador de Prêmio Assiduidade")
     
@@ -171,12 +158,11 @@ def main():
                 
                 if df_resultado is not None:
                     st.success("Dados processados com sucesso!")
-                    
                     st.markdown("### Resultado Consolidado")
                     st.dataframe(df_resultado)
                     
                     st.markdown("### Download do Arquivo Consolidado")
-                    st.markdown(download_xlsx(df_resultado, "resultado_assiduidade_consolidado.xlsx"), unsafe_allow_html=True)
+                    st.download_button("Baixar Arquivo", data=df_resultado.to_csv(index=False).encode('utf-8'), file_name="resultado_assiduidade_consolidado.csv")
 
             st.markdown("### Download do Log")
             log_file = generate_log_file()
@@ -184,3 +170,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
