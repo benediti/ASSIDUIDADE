@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Ajuste de Cabeçalho Específico
+Processador de Prêmio Assiduidade - Ajuste para Coluna 'Código'
 """
 
 import streamlit as st
@@ -18,7 +18,7 @@ def read_excel(file, header_row=0):
     """Lê o arquivo Excel e retorna o DataFrame com o cabeçalho especificado"""
     try:
         df = pd.read_excel(file, engine='openpyxl', header=header_row)
-        st.write("Pré-visualização do arquivo:", df.head(10))
+        st.write("Colunas detectadas no arquivo:", df.columns.tolist())
         return df
     except Exception as e:
         st.error(f"Erro ao ler arquivo: {str(e)}")
@@ -40,7 +40,7 @@ def calcular_premio(row, ausencias):
             return 'AVALIAR - HORAS DIFERENTES', 0
 
         # Verificar se há ausências
-        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Código']]
+        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Matrícula']]
         if not funcionario_ausencias.empty:
             for _, ausencia in funcionario_ausencias.iterrows():
                 if ausencia['Falta'] == 'x' or ausencia['Ausência Integral'] == 'Sim':
@@ -116,3 +116,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
