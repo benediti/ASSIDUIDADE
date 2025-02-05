@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Ajustado para Erros de Leitura e Reindexação
+Processador de Prêmio Assiduidade - Ajuste de Cabeçalho Específico
 """
 
 import streamlit as st
@@ -14,46 +14,14 @@ PREMIO_VALOR_INTEGRAL = 300.00
 PREMIO_VALOR_PARCIAL = 150.00
 SALARIO_LIMITE = 2542.86
 
-def read_excel(file):
-    """Lê o arquivo Excel e retorna o DataFrame"""
+def read_excel(file, header_row=0):
+    """Lê o arquivo Excel e retorna o DataFrame com o cabeçalho especificado"""
     try:
-        df = pd.read_excel(file, engine='openpyxl', header=None)
+        df = pd.read_excel(file, engine='openpyxl', header=header_row)
         st.write("Pré-visualização do arquivo:", df.head(10))
         return df
     except Exception as e:
         st.error(f"Erro ao ler arquivo: {str(e)}")
-        return None
-
-def process_base(df):
-    """Processa o arquivo base para ajustar o cabeçalho e as colunas"""
-    try:
-        # Encontrar linha com o cabeçalho correto
-        for i in range(len(df)):
-            if "Salário" in df.iloc[i].values:
-                df.columns = df.iloc[i]
-                df = df[i + 1:].reset_index(drop=True)
-                break
-        else:
-            st.error("Não foi possível encontrar o cabeçalho correto no arquivo base.")
-            return None
-
-        # Renomear colunas importantes
-        column_mapping = {
-            'Matrícula': 'Código Funcionário',
-            'Nome': 'Nome Funcionário',
-            'Centro de Custo Código': 'Código Local',
-            'Centro de Custo Nome': 'Nome Local Funcionário',
-            'Horas': 'Qtd Horas Mensais',
-            'Contrato': 'Tipo Contrato',
-            'Data Término': 'Data Term Contrato',
-            'Experiência': 'Dias Experiência',
-            'Salário': 'Salário Mês Atual'
-        }
-        df = df.rename(columns=column_mapping)
-        st.write("Colunas processadas:", df.columns)
-        return df
-    except Exception as e:
-        st.error(f"Erro ao processar arquivo base: {str(e)}")
         return None
 
 def calcular_premio(row, ausencias):
@@ -72,7 +40,7 @@ def calcular_premio(row, ausencias):
             return 'AVALIAR - HORAS DIFERENTES', 0
 
         # Verificar se há ausências
-        funcionario_ausencias = ausencias[ausencias['Código Funcionário'] == row['Código Funcionário']]
+        funcionario_ausencias = ausencias[ausencias['Matrícula'] == row['Código']]
         if not funcionario_ausencias.empty:
             for _, ausencia in funcionario_ausencias.iterrows():
                 if ausencia['Falta'] == 'x' or ausencia['Ausência Integral'] == 'Sim':
@@ -87,15 +55,10 @@ def process_data(base_file, absence_file):
     """Processa os dados do arquivo base e de ausências"""
     try:
         # Ler arquivos
-        df_base_raw = read_excel(base_file)
+        df_base = read_excel(base_file, header_row=2)  # Cabeçalho na linha 3
         df_ausencias = read_excel(absence_file)
 
-        if df_base_raw is None or df_ausencias is None:
-            return None
-
-        # Processar layout do arquivo base
-        df_base = process_base(df_base_raw)
-        if df_base is None:
+        if df_base is None or df_ausencias is None:
             return None
 
         # Realizar os cálculos
@@ -153,4 +116,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
