@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Correção Final para XLSX
+Processador de Prêmio Assiduidade - Revisão Completa
 """
 
 import streamlit as st
@@ -38,12 +38,10 @@ def normalize_strings(df):
 def calcular_premio(row):
     """Calcula o prêmio com base nas regras de assiduidade"""
     try:
-        # Regra 1: Salário acima do limite
         salario = float(row['Salário Mês Atual'])
         if salario > SALARIO_LIMITE:
             return 'NÃO PAGAR - SALÁRIO MAIOR', 0
 
-        # Regra 2: Ausências, faltas ou afastamentos
         if pd.notna(row.get('Falta')) or pd.notna(row.get('Afastamentos')) or pd.notna(row.get('Ausência Integral')) or pd.notna(row.get('Ausência Parcial')):
             if pd.notna(row.get('Falta')):
                 return 'NÃO PAGAR - FALTA', 0
@@ -52,14 +50,12 @@ def calcular_premio(row):
             if pd.notna(row.get('Ausência Integral')) or pd.notna(row.get('Ausência Parcial')):
                 return 'AVALIAR - AUSÊNCIA', 0
 
-        # Regra 3: Verificação de horas
         horas = int(row['Qtd Horas Mensais'])
         if horas == 220:
             return 'PAGAR', PREMIO_VALOR_INTEGRAL
         elif horas in [110, 120]:
             return 'PAGAR', PREMIO_VALOR_PARCIAL
 
-        # Caso todas as colunas estejam em branco (nenhuma ocorrência)
         return 'PAGAR - SEM OCORRÊNCIAS', PREMIO_VALOR_INTEGRAL
 
     except Exception as e:
@@ -69,19 +65,16 @@ def calcular_premio(row):
 def process_data(base_file, absence_file, model_file):
     """Processa os dados do arquivo base e de ausências e usa o modelo fornecido"""
     try:
-        # Ler arquivos
-        df_base = read_excel(base_file, header_row=2)  # Cabeçalho na linha 3
+        df_base = read_excel(base_file, header_row=2)
         df_ausencias = read_excel(absence_file)
         df_model = read_excel(model_file)
 
         if df_base is None or df_ausencias is None or df_model is None:
             return None
 
-        # Normalizar valores e strings
         df_base = normalize_strings(df_base)
         df_ausencias = normalize_strings(df_ausencias)
 
-        # Consolidar informações de ausências no arquivo base
         df_base['Falta'] = df_ausencias.get('Falta', pd.Series([None] * len(df_base)))
         df_base['Afastamentos'] = df_ausencias.get('Afastamentos', pd.Series([''] * len(df_base))).apply(
             lambda x: '; '.join(str(x).split(';')).strip() if pd.notna(x) else ''
@@ -89,7 +82,6 @@ def process_data(base_file, absence_file, model_file):
         df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', pd.Series([None] * len(df_base)))
         df_base['Ausência Parcial'] = df_ausencias.get('Ausência parcial', pd.Series([None] * len(df_base)))
 
-        # Realizar os cálculos
         resultados = []
         for _, row in df_base.iterrows():
             status, valor = calcular_premio(row)
@@ -99,12 +91,11 @@ def process_data(base_file, absence_file, model_file):
 
         df_resultado = pd.DataFrame(resultados)
 
-        # Ajustar para o modelo fornecido
         for col in df_model.columns:
             if col not in df_resultado.columns:
-                df_resultado[col] = None  # Adiciona colunas do modelo que não estão no resultado
+                df_resultado[col] = None
 
-        df_resultado = df_resultado[df_model.columns]  # Reordena as colunas de acordo com o modelo
+        df_resultado = df_resultado[df_model.columns]
 
         return df_resultado
     except Exception as e:
@@ -115,9 +106,8 @@ def download_xlsx(df, filename):
     """Cria link para download do arquivo XLSX"""
     try:
         output = BytesIO()
-        writer = pd.ExcelWriter(output, engine='xlsxwriter')
-        df.to_excel(writer, index=False, sheet_name='Resultado')
-        writer.close()  # Substituir `save()` por `close()`
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Resultado')
         xlsx_data = output.getvalue()
         b64 = base64.b64encode(xlsx_data).decode()
         href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}">Download {filename}</a>'
@@ -140,4 +130,22 @@ def main():
         absence_file = st.file_uploader("Arquivo de Ausências", type=['xlsx', 'xls'])
 
     with col3:
-        model_file = st
+        model_file = st.file_uploader("Modelo de Exportação", type=['xlsx', 'xls'])
+
+    if base_file and absence_file and model_file:
+        if st.button("Processar Dados"):
+            with st.spinner('Processando dados...'):
+                df_resultado = process_data(base_file, absence_file, model_file)
+                
+                if df_resultado is not None:
+                    st.success("Dados processados com sucesso!")
+                    
+                    st.markdown("### Resultado Consolidado")
+                    st.dataframe(df_resultado)
+                    
+                    st.markdown("### Download do Arquivo")
+                    st.markdown(download_xlsx(df_resultado, "resultado_assiduidade_consolidado.xlsx"), unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
+
