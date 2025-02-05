@@ -65,55 +65,6 @@ def debug_dataframe(df, name):
     if null_counts.any():
         add_to_log(f"Null value counts:\n{null_counts}", 'warning')
 
-def read_excel(file, sheet_name=None):
-    """Lê um arquivo Excel com estratégias robustas de leitura"""
-    try:
-        add_to_log(f"Tentando ler arquivo: {file.name}", 'debug')
-        
-        # Lê todo o arquivo para inspeção
-        xls = pd.ExcelFile(file)
-        sheet_options = xls.sheet_names if sheet_name is None else [sheet_name]
-        
-        # Estratégias de leitura
-        header_options = [0, None]
-        
-        for sheet in sheet_options:
-            for header in header_options:
-                try:
-                    # Lê o DataFrame 
-                    df = pd.read_excel(
-                        file, 
-                        sheet_name=sheet, 
-                        header=header, 
-                        engine='openpyxl'
-                    )
-                    
-                    # Remove colunas sem nome
-                    df.columns = [str(col).strip() for col in df.columns]
-                    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-                    
-                    # Filtra linhas totalmente vazias
-                    df = df.dropna(how='all')
-                    
-                    # Verifica se o DataFrame não está vazio
-                    if not df.empty and len(df.columns) > 0:
-                        add_to_log(f"Arquivo '{file.name}' lido com sucesso. Planilha: {sheet}, Header: {header}", 'info')
-                        
-                        # Debug detalhado
-                        debug_dataframe(df, file.name)
-                        
-                        return df
-                
-                except Exception as inner_e:
-                    add_to_log(f"Falha na leitura. Sheet: {sheet}, Header: {header}. Erro: {str(inner_e)}", 'debug')
-        
-        # Se chegar aqui, nenhuma estratégia funcionou
-        add_to_log(f"Falha total ao ler o arquivo {file.name}", 'error')
-        return None
-    
-    except Exception as e:
-        add_to_log(f"Erro fatal ao ler arquivo '{file.name}': {str(e)}\n{traceback.format_exc()}", 'error')
-        return None
 
 def normalize_strings(df):
     """Remove acentuação de strings"""
