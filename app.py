@@ -15,41 +15,61 @@ SALARIO_LIMITE = 2542.86
 
 def calcular_premio(row, horas_mensais):
     """Calcula se funcionário deve receber prêmio e quanto"""
-    # Verificar salário
     try:
+        # 1. Verificar salário
         if isinstance(row['Salário'], str):
-            salario = float(row['Salário'].replace('R$', '').replace('.', '').replace(',', '.'))
+            # Remover R$, pontos e trocar vírgula por ponto
+            salario = float(row['Salário'].replace('R$', '').replace('.', '').replace(',', '.').strip())
         else:
             salario = float(row['Salário'])
-        
+            
         if salario > SALARIO_LIMITE:
-            return ('NÃO PAGAR - SALÁRIO MAIOR', 0, '#FF0000')
-    except:
-        pass
-
-    # Verificar se tem ocorrências
-    if pd.isna(row['Data']) and pd.isna(row['Ausência Integral']) and \
-       pd.isna(row['Ausência Parcial']) and pd.isna(row['Afastamentos']) and \
-       pd.isna(row['Falta']):
-        # Verificar horas mensais
+            return ('NÃO PAGAR - SALÁRIO MAIOR QUE R$ 2.542,86', 0, '#FF0000')
+        
+        # 2. Verificar horas (define valor base do prêmio)
         try:
-            horas = int(float(str(horas_mensais).replace(',', '.')))
-            if horas == 220:
-                return ('PAGAR - INTEGRAL', PREMIO_VALOR_INTEGRAL, '#00FF00')
-            elif horas in [110, 120]:
-                return ('PAGAR - MEIO PERÍODO', PREMIO_VALOR_PARCIAL, '#00FF00')
+            if isinstance(horas_mensais, str):
+                horas = float(horas_mensais.replace(',', '.'))
             else:
-                return ('AVALIAR - HORAS DIFERENTES', 0, '#0000FF')
+                horas = float(horas_mensais)
+                
+            if horas == 220:
+                valor_base = PREMIO_VALOR_INTEGRAL
+            elif horas in [110, 120]:
+                valor_base = PREMIO_VALOR_PARCIAL
+            else:
+                return ('AVALIAR - HORAS DIFERENTES DE 110/120/220', 0, '#0000FF')
         except:
             return ('AVALIAR - HORAS INVÁLIDAS', 0, '#0000FF')
-    elif row['Falta'] == '1':
-        return ('NÃO PAGAR - FALTA', 0, '#FF0000')
-    elif not pd.isna(row['Afastamentos']):
-        return ('NÃO PAGAR - AFASTAMENTO', 0, '#FF0000')
-    elif not pd.isna(row['Ausência Integral']) or not pd.isna(row['Ausência Parcial']):
-        return ('AVALIAR - AUSÊNCIA', 0, '#0000FF')
-    else:
-        return ('AVALIAR', 0, '#0000FF')
+        
+        # 3. Verificar ocorrências
+        # Se tem falta marcada com x
+        if row['Falta'] == '1' or row['Falta'] == 'x':
+            return ('NÃO PAGAR - FALTA', 0, '#FF0000')
+            
+        # Se tem afastamento
+        if not pd.isna(row['Afastamentos']) and str(row['Afastamentos']).strip() != '':
+            return ('NÃO PAGAR - AFASTAMENTO', 0, '#FF0000')
+            
+        # Se tem ausência (integral ou parcial)
+        if (not pd.isna(row['Ausência Integral']) and row['Ausência Integral'] == 'Sim') or \
+           (not pd.isna(row['Ausência Parcial']) and row['Ausência Parcial'] != '00:00'):
+            return ('AVALIAR - AUSÊNCIA', 0, '#0000FF')
+            
+        # Se não tem nenhuma ocorrência (linha em branco nas colunas de ocorrência)
+        if pd.isna(row['Data']) and pd.isna(row['Ausência Integral']) and \
+           pd.isna(row['Ausência Parcial']) and pd.isna(row['Afastamentos']) and \
+           pd.isna(row['Falta']):
+            if valor_base == PREMIO_VALOR_INTEGRAL:
+                return ('PAGAR - INTEGRAL (220h)', PREMIO_VALOR_INTEGRAL, '#00FF00')
+            else:
+                return ('PAGAR - MEIO PERÍODO (110/120h)', PREMIO_VALOR_PARCIAL, '#00FF00')
+            
+        return ('AVALIAR - VERIFICAR OCORRÊNCIAS', 0, '#0000FF')
+            
+    except Exception as e:
+        st.error(f"Erro no cálculo do prêmio: {str(e)}")
+        return ('ERRO - VERIFICAR DADOS', 0, '#FF0000')
 
 def read_excel(file):
     """Lê arquivo Excel e trata cabeçalhos"""
