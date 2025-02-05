@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Correção para Falta de Coluna "Falta"
+Processador de Prêmio Assiduidade - Correção Final
 """
 
 import streamlit as st
@@ -30,10 +30,10 @@ def generate_log_file():
     log_file = BytesIO(log_data.encode('utf-8'))
     return log_file
 
-def read_excel(file, header_row=None):
+def read_excel(file, sheet_name=None):
     """Lê o arquivo Excel e retorna o DataFrame com o cabeçalho especificado"""
     try:
-        df = pd.read_excel(file, engine='openpyxl', header=header_row)
+        df = pd.read_excel(file, sheet_name=sheet_name, engine='openpyxl')
         add_to_log(f"Arquivo '{file.name}' lido com sucesso. Colunas detectadas: {df.columns.tolist()}")
         return df
     except Exception as e:
@@ -51,13 +51,13 @@ def normalize_strings(df):
         return df
 
 def process_faltas(df):
-    """Converte 'x' na coluna 'Falta' para o valor 1, e cria a coluna se não existir"""
+    """Converte 'x' na coluna 'Falta' para o valor 1, e preenche valores em branco com 0"""
     try:
         if 'Falta' in df.columns:
-            df['Falta'] = df['Falta'].apply(lambda x: str(x).count('x') if isinstance(x, str) else 0)
-            add_to_log("Coluna 'Falta' processada: valores 'x' convertidos para 1.")
+            df['Falta'] = df['Falta'].fillna(0).astype(str).apply(lambda x: x.count('x'))
+            add_to_log("Coluna 'Falta' processada: valores 'x' convertidos para 1 e vazios para 0.")
         else:
-            df['Falta'] = 0  # Se a coluna não existe, assume que não há faltas
+            df['Falta'] = 0
             add_to_log("Coluna 'Falta' não encontrada no arquivo. Criando a coluna com valores zerados.")
         return df
     except Exception as e:
@@ -94,8 +94,8 @@ def calcular_premio(row):
 def process_data(base_file, absence_file, model_file):
     """Processa os dados do arquivo base e de ausências e usa o modelo fornecido"""
     try:
-        df_base = read_excel(base_file, header_row=2)
-        df_ausencias = read_excel(absence_file)
+        df_base = read_excel(base_file)
+        df_ausencias = read_excel(absence_file, sheet_name="data")
         df_model = read_excel(model_file)
 
         if df_base is None or df_ausencias is None or df_model is None:
@@ -138,36 +138,18 @@ def process_data(base_file, absence_file, model_file):
 def main():
     st.title("Processador de Prêmio Assiduidade")
     
-    st.markdown("### Upload dos Arquivos")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        base_file = st.file_uploader("Arquivo Base (Premio Assiduidade)", type=['xlsx', 'xls'])
-
-    with col2:
-        absence_file = st.file_uploader("Arquivo de Ausências", type=['xlsx', 'xls'])
-
-    with col3:
-        model_file = st.file_uploader("Modelo de Exportação", type=['xlsx', 'xls'])
+    base_file = st.file_uploader("Arquivo Base", type=['xlsx'])
+    absence_file = st.file_uploader("Arquivo de Ausências", type=['xlsx'])
+    model_file = st.file_uploader("Modelo de Exportação", type=['xlsx'])
 
     if base_file and absence_file and model_file:
         if st.button("Processar Dados"):
-            with st.spinner('Processando dados...'):
-                df_resultado = process_data(base_file, absence_file, model_file)
+            df_resultado = process_data(base_file, absence_file, model_file)
+            if df_resultado is not None:
+                st.success("Dados processados com sucesso!")
+                st.download_button("Baixar Relatório", data=df_resultado.to_csv(index=False).encode('utf-8'), file_name="resultado.csv")
                 
-                if df_resultado is not None:
-                    st.success("Dados processados com sucesso!")
-                    st.markdown("### Resultado Consolidado")
-                    st.dataframe(df_resultado)
-                    
-                    st.markdown("### Download do Arquivo Consolidado")
-                    st.download_button("Baixar Arquivo", data=df_resultado.to_csv(index=False).encode('utf-8'), file_name="resultado_assiduidade_consolidado.csv")
-
-            st.markdown("### Download do Log")
-            log_file = generate_log_file()
-            st.download_button("Baixar Log de Processamento", data=log_file, file_name="log_processamento.txt")
+            st.download_button("Baixar Log", data=generate_log_file(), file_name="log.txt")
 
 if __name__ == "__main__":
     main()
-
