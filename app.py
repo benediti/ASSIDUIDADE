@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Exportação XLSX e Ajustes Finais
+Processador de Prêmio Assiduidade - Correções Finais
 """
 
 import streamlit as st
@@ -15,7 +15,7 @@ PREMIO_VALOR_INTEGRAL = 300.00
 PREMIO_VALOR_PARCIAL = 150.00
 SALARIO_LIMITE = 2542.86
 
-def read_excel(file, header_row=0):
+def read_excel(file, header_row=None):
     """Lê o arquivo Excel e retorna o DataFrame com o cabeçalho especificado"""
     try:
         df = pd.read_excel(file, engine='openpyxl', header=header_row)
@@ -82,10 +82,10 @@ def process_data(base_file, absence_file, model_file):
         df_ausencias = normalize_strings(df_ausencias)
 
         # Consolidar informações de ausências no arquivo base
-        df_base['Falta'] = df_ausencias['Falta']
-        df_base['Afastamentos'] = df_ausencias['Afastamentos'].fillna('').apply(lambda x: '; '.join(str(x).split(';')).strip())
-        df_base['Ausência Integral'] = df_ausencias['Ausência integral']
-        df_base['Ausência Parcial'] = df_ausencias['Ausência parcial']
+        df_base['Falta'] = df_ausencias.get('Falta', None)
+        df_base['Afastamentos'] = df_ausencias.get('Afastamentos', '').fillna('').apply(lambda x: '; '.join(str(x).split(';')).strip())
+        df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', None)
+        df_base['Ausência Parcial'] = df_ausencias.get('Ausência parcial', None)
 
         # Realizar os cálculos
         resultados = []
