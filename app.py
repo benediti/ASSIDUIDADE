@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Revisado com Centro de Custo
+Processador de Prêmio Assiduidade - Revisado para Compatibilidade com Planilhas Base
 """
 
 import streamlit as st
@@ -14,6 +14,16 @@ PREMIO_VALOR_INTEGRAL = 300.00
 PREMIO_VALOR_PARCIAL = 150.00
 SALARIO_LIMITE = 2542.86
 
+def read_excel(file):
+    """Lê o arquivo Excel e exibe as colunas detectadas"""
+    try:
+        df = pd.read_excel(file, engine='openpyxl')
+        st.write("Nomes das colunas detectados:", list(df.columns))
+        return df
+    except Exception as e:
+        st.error(f"Erro ao ler arquivo: {str(e)}")
+        return None
+
 def normalize_columns(df):
     """Renomeia colunas para garantir compatibilidade com o código."""
     column_mapping = {
@@ -27,6 +37,10 @@ def normalize_columns(df):
         'Experiência': 'Dias Experiência',
         'Salário': 'Salário Mês Atual'
     }
+    missing_columns = [col for col in column_mapping.keys() if col not in df.columns]
+    if missing_columns:
+        st.error(f"As seguintes colunas estão ausentes no arquivo: {', '.join(missing_columns)}")
+        return None
     df = df.rename(columns=column_mapping)
     return df
 
@@ -69,21 +83,16 @@ def calcular_premio(row, horas_mensais):
         st.error(f"Erro no cálculo do prêmio: {str(e)}")
         return 'ERRO - VERIFICAR DADOS', 0, '#FF0000'
 
-def read_excel(file):
-    try:
-        df = pd.read_excel(file, engine='openpyxl')
-        return df
-    except Exception as e:
-        st.error(f"Erro ao ler arquivo: {str(e)}")
-        return None
-
 def process_data(base_file, absence_file):
+    """Processa os dados dos arquivos e verifica a compatibilidade das colunas"""
     try:
-        df_base = normalize_columns(read_excel(base_file))
+        df_base = read_excel(base_file)
+        df_base = normalize_columns(df_base)
         if df_base is None:
             return None, None
             
-        df_absence = normalize_columns(read_excel(absence_file))
+        df_absence = read_excel(absence_file)
+        df_absence = normalize_columns(df_absence)
         if df_absence is None:
             return None, None
 
@@ -160,6 +169,7 @@ def process_data(base_file, absence_file):
         return None, None
 
 def download_link(df, filename):
+    """Cria link para download do arquivo"""
     try:
         csv = df.to_csv(index=False, encoding='utf-8-sig')
         b64 = base64.b64encode(csv.encode()).decode()
