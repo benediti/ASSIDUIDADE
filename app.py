@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Correções Finais
+Processador de Prêmio Assiduidade - Correção de Erro 'fillna'
 """
 
 import streamlit as st
@@ -44,12 +44,12 @@ def calcular_premio(row):
             return 'NÃO PAGAR - SALÁRIO MAIOR', 0
 
         # Regra 2: Ausências, faltas ou afastamentos
-        if pd.notna(row['Falta']) or pd.notna(row['Afastamentos']) or pd.notna(row['Ausência Integral']) or pd.notna(row['Ausência Parcial']):
-            if pd.notna(row['Falta']):
+        if pd.notna(row.get('Falta')) or pd.notna(row.get('Afastamentos')) or pd.notna(row.get('Ausência Integral')) or pd.notna(row.get('Ausência Parcial')):
+            if pd.notna(row.get('Falta')):
                 return 'NÃO PAGAR - FALTA', 0
-            if pd.notna(row['Afastamentos']):
+            if pd.notna(row.get('Afastamentos')):
                 return 'NÃO PAGAR - AFASTAMENTO', 0
-            if pd.notna(row['Ausência Integral']) or pd.notna(row['Ausência Parcial']):
+            if pd.notna(row.get('Ausência Integral')) or pd.notna(row.get('Ausência Parcial')):
                 return 'AVALIAR - AUSÊNCIA', 0
 
         # Regra 3: Verificação de horas
@@ -82,10 +82,12 @@ def process_data(base_file, absence_file, model_file):
         df_ausencias = normalize_strings(df_ausencias)
 
         # Consolidar informações de ausências no arquivo base
-        df_base['Falta'] = df_ausencias.get('Falta', None)
-        df_base['Afastamentos'] = df_ausencias.get('Afastamentos', '').fillna('').apply(lambda x: '; '.join(str(x).split(';')).strip())
-        df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', None)
-        df_base['Ausência Parcial'] = df_ausencias.get('Ausência parcial', None)
+        df_base['Falta'] = df_ausencias.get('Falta', pd.Series([None] * len(df_base)))
+        df_base['Afastamentos'] = df_ausencias.get('Afastamentos', pd.Series([''] * len(df_base))).apply(
+            lambda x: '; '.join(str(x).split(';')).strip() if pd.notna(x) else ''
+        )
+        df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', pd.Series([None] * len(df_base)))
+        df_base['Ausência Parcial'] = df_ausencias.get('Ausência parcial', pd.Series([None] * len(df_base)))
 
         # Realizar os cálculos
         resultados = []
@@ -156,3 +158,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
