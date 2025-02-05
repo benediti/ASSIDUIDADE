@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Correção Final
+Processador de Prêmio Assiduidade - Mantendo Estrutura do Modelo na Exportação
 """
 
 import streamlit as st
@@ -8,7 +8,7 @@ import unicodedata
 import base64
 from io import BytesIO
 
-# Configurações iniciais
+# Configuração inicial do Streamlit
 st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide")
 
 # Constantes
@@ -16,7 +16,7 @@ PREMIO_VALOR_INTEGRAL = 300.00
 PREMIO_VALOR_PARCIAL = 150.00
 SALARIO_LIMITE = 2542.86
 
-# Variável global para armazenar logs
+# Lista para armazenar logs
 log_messages = []
 
 def add_to_log(message):
@@ -27,13 +27,12 @@ def add_to_log(message):
 def generate_log_file():
     """Gera um arquivo de log em memória"""
     log_data = "\n".join(log_messages)
-    log_file = BytesIO(log_data.encode('utf-8'))
-    return log_file
+    return BytesIO(log_data.encode('utf-8'))
 
-def read_excel(file, sheet_name=None):
-    """Lê o arquivo Excel e retorna o DataFrame com o cabeçalho especificado"""
+def read_excel(file, sheet_name=None, header_row=0):
+    """Lê um arquivo Excel garantindo que os dados sejam carregados corretamente"""
     try:
-        df = pd.read_excel(file, sheet_name=sheet_name, engine='openpyxl')
+        df = pd.read_excel(file, sheet_name=sheet_name, header=header_row, engine='openpyxl')
         add_to_log(f"Arquivo '{file.name}' lido com sucesso. Colunas detectadas: {df.columns.tolist()}")
         return df
     except Exception as e:
@@ -41,7 +40,7 @@ def read_excel(file, sheet_name=None):
         return None
 
 def normalize_strings(df):
-    """Remove acentuação de strings nas colunas do DataFrame"""
+    """Remove acentuação de strings"""
     try:
         for col in df.select_dtypes(include=['object']).columns:
             df[col] = df[col].apply(lambda x: unicodedata.normalize('NFKD', str(x)).encode('ascii', 'ignore').decode('utf-8') if isinstance(x, str) else x)
@@ -51,14 +50,14 @@ def normalize_strings(df):
         return df
 
 def process_faltas(df):
-    """Converte 'x' na coluna 'Falta' para o valor 1, e preenche valores em branco com 0"""
+    """Converte 'x' na coluna 'Falta' para o valor 1 e preenche valores vazios com 0"""
     try:
         if 'Falta' in df.columns:
             df['Falta'] = df['Falta'].fillna(0).astype(str).apply(lambda x: x.count('x'))
-            add_to_log("Coluna 'Falta' processada: valores 'x' convertidos para 1 e vazios para 0.")
+            add_to_log("Coluna 'Falta' processada corretamente.")
         else:
             df['Falta'] = 0
-            add_to_log("Coluna 'Falta' não encontrada no arquivo. Criando a coluna com valores zerados.")
+            add_to_log("Coluna 'Falta' não encontrada no arquivo. Criando com valores zerados.")
         return df
     except Exception as e:
         add_to_log(f"Erro ao processar faltas: {str(e)}")
@@ -92,11 +91,11 @@ def calcular_premio(row):
         return 'ERRO - VERIFICAR DADOS', 0
 
 def process_data(base_file, absence_file, model_file):
-    """Processa os dados do arquivo base e de ausências e usa o modelo fornecido"""
+    """Processa os dados e mantém a estrutura do modelo"""
     try:
-        df_base = read_excel(base_file)
+        df_base = read_excel(base_file, sheet_name="Planilha 1", header_row=1)
         df_ausencias = read_excel(absence_file, sheet_name="data")
-        df_model = read_excel(model_file)
+        df_model = read_excel(model_file, sheet_name="Planilha 1")
 
         if df_base is None or df_ausencias is None or df_model is None:
             add_to_log("Erro: Um ou mais arquivos não foram lidos corretamente.")
@@ -122,12 +121,12 @@ def process_data(base_file, absence_file, model_file):
 
         df_resultado = pd.DataFrame(resultados)
 
-        # Ajustar para o modelo fornecido
+        # Garantir que a estrutura do modelo seja mantida mesmo se não houver registros
         for col in df_model.columns:
             if col not in df_resultado.columns:
-                df_resultado[col] = None
+                df_resultado[col] = None  # Adiciona as colunas vazias
 
-        df_resultado = df_resultado[df_model.columns]
+        df_resultado = df_resultado[df_model.columns]  # Reordena conforme modelo
 
         add_to_log("Processamento concluído com sucesso.")
         return df_resultado
@@ -147,9 +146,17 @@ def main():
             df_resultado = process_data(base_file, absence_file, model_file)
             if df_resultado is not None:
                 st.success("Dados processados com sucesso!")
-                st.download_button("Baixar Relatório", data=df_resultado.to_csv(index=False).encode('utf-8'), file_name="resultado.csv")
                 
-            st.download_button("Baixar Log", data=generate_log_file(), file_name="log.txt")
+                # Garante que o modelo seja preservado, mesmo sem registros
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df_resultado.to_excel(writer, index=False, sheet_name='Resultado')
+                output.seek(0)
+
+                st.download_button("Baixar Relatório", data=output, file_name="resultado_assiduidade.xlsx")
+
+            st.download_button("Baixar Log", data=generate_log_file(), file_name="log_processamento.txt")
 
 if __name__ == "__main__":
     main()
+
