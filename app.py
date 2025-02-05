@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Revisado
+Processador de Prêmio Assiduidade - Revisado com Centro de Custo
 """
 
 import streamlit as st
@@ -13,6 +13,22 @@ st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide
 PREMIO_VALOR_INTEGRAL = 300.00
 PREMIO_VALOR_PARCIAL = 150.00
 SALARIO_LIMITE = 2542.86
+
+def normalize_columns(df):
+    """Renomeia colunas para garantir compatibilidade com o código."""
+    column_mapping = {
+        'Matrícula': 'Código Funcionário',
+        'Nome': 'Nome Funcionário',
+        'Centro de Custo Código': 'Código Local',
+        'Centro de Custo Nome': 'Nome Local Funcionário',
+        'Horas': 'Qtd Horas Mensais',
+        'Contrato': 'Tipo Contrato',
+        'Data Término': 'Data Term Contrato',
+        'Experiência': 'Dias Experiência',
+        'Salário': 'Salário Mês Atual'
+    }
+    df = df.rename(columns=column_mapping)
+    return df
 
 def calcular_premio(row, horas_mensais):
     try:
@@ -63,11 +79,11 @@ def read_excel(file):
 
 def process_data(base_file, absence_file):
     try:
-        df_base = read_excel(base_file)
+        df_base = normalize_columns(read_excel(base_file))
         if df_base is None:
             return None, None
             
-        df_absence = read_excel(absence_file)
+        df_absence = normalize_columns(read_excel(absence_file))
         if df_absence is None:
             return None, None
 
