@@ -1,11 +1,11 @@
 """
-Processador de Prêmio Assiduidade - Ajustado para Modelo e Acentuação
+Processador de Prêmio Assiduidade - Exportação XLSX e Ajustes Finais
 """
 
 import streamlit as st
 import pandas as pd
 import unicodedata
-import base64
+from io import BytesIO
 
 # Configurações iniciais
 st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide")
@@ -109,15 +109,19 @@ def process_data(base_file, absence_file, model_file):
         st.error(f"Erro ao processar dados: {str(e)}")
         return None
 
-def download_link(df, filename):
-    """Cria link para download do arquivo"""
+def download_xlsx(df, filename):
+    """Cria link para download do arquivo XLSX"""
     try:
-        csv = df.to_csv(index=False, encoding='utf-8-sig')
-        b64 = base64.b64encode(csv.encode()).decode()
-        href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download {filename}</a>'
+        output = BytesIO()
+        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        df.to_excel(writer, index=False, sheet_name='Resultado')
+        writer.save()
+        xlsx_data = output.getvalue()
+        b64 = base64.b64encode(xlsx_data).decode()
+        href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}">Download {filename}</a>'
         return href
     except Exception as e:
-        st.error(f"Erro ao criar link de download: {str(e)}")
+        st.error(f"Erro ao criar link de download XLSX: {str(e)}")
         return None
 
 def main():
@@ -148,7 +152,7 @@ def main():
                     st.dataframe(df_resultado)
                     
                     st.markdown("### Download do Arquivo")
-                    st.markdown(download_link(df_resultado, "resultado_assiduidade_consolidado.csv"), unsafe_allow_html=True)
+                    st.markdown(download_xlsx(df_resultado, "resultado_assiduidade_consolidado.xlsx"), unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
