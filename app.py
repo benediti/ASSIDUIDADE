@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Correção de Erro 'fillna'
+Processador de Prêmio Assiduidade - Correção Final para XLSX
 """
 
 import streamlit as st
@@ -117,7 +117,7 @@ def download_xlsx(df, filename):
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='xlsxwriter')
         df.to_excel(writer, index=False, sheet_name='Resultado')
-        writer.save()
+        writer.close()  # Substituir `save()` por `close()`
         xlsx_data = output.getvalue()
         b64 = base64.b64encode(xlsx_data).decode()
         href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}">Download {filename}</a>'
@@ -140,22 +140,4 @@ def main():
         absence_file = st.file_uploader("Arquivo de Ausências", type=['xlsx', 'xls'])
 
     with col3:
-        model_file = st.file_uploader("Modelo de Exportação", type=['xlsx', 'xls'])
-
-    if base_file and absence_file and model_file:
-        if st.button("Processar Dados"):
-            with st.spinner('Processando dados...'):
-                df_resultado = process_data(base_file, absence_file, model_file)
-                
-                if df_resultado is not None:
-                    st.success("Dados processados com sucesso!")
-                    
-                    st.markdown("### Resultado Consolidado")
-                    st.dataframe(df_resultado)
-                    
-                    st.markdown("### Download do Arquivo")
-                    st.markdown(download_xlsx(df_resultado, "resultado_assiduidade_consolidado.xlsx"), unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
-
+        model_file = st
