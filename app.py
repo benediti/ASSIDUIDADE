@@ -1,12 +1,12 @@
 """
-Processador de Prêmio Assiduidade - Correção de Importação e Exportação
+Processador de Prêmio Assiduidade - Adicionado Log para Download
 """
 
 import streamlit as st
 import pandas as pd
 import unicodedata
 import base64
-from io import BytesIO
+from io import BytesIO, StringIO
 
 # Configurações iniciais
 st.set_page_config(page_title="Processador de Prêmio Assiduidade", layout="wide")
@@ -16,16 +16,28 @@ PREMIO_VALOR_INTEGRAL = 300.00
 PREMIO_VALOR_PARCIAL = 150.00
 SALARIO_LIMITE = 2542.86
 
+# Variável global para armazenar logs
+log_messages = []
+
+def add_to_log(message):
+    """Adiciona mensagens ao log"""
+    global log_messages
+    log_messages.append(message)
+
+def generate_log_file():
+    """Gera um arquivo de log em memória"""
+    log_data = "\n".join(log_messages)
+    log_file = BytesIO(log_data.encode('utf-8'))
+    return log_file
+
 def read_excel(file, header_row=None):
     """Lê o arquivo Excel e retorna o DataFrame com o cabeçalho especificado"""
     try:
         df = pd.read_excel(file, engine='openpyxl', header=header_row)
-        st.write(f"Pré-visualização do arquivo ({file.name}):")
-        st.dataframe(df.head())
-        st.write("Colunas detectadas no arquivo:", df.columns.tolist())
+        add_to_log(f"Arquivo '{file.name}' lido com sucesso. Colunas detectadas: {df.columns.tolist()}")
         return df
     except Exception as e:
-        st.error(f"Erro ao ler arquivo {file.name}: {str(e)}")
+        add_to_log(f"Erro ao ler arquivo '{file.name}': {str(e)}")
         return None
 
 def normalize_strings(df):
@@ -35,7 +47,20 @@ def normalize_strings(df):
             df[col] = df[col].apply(lambda x: unicodedata.normalize('NFKD', str(x)).encode('ascii', 'ignore').decode('utf-8') if isinstance(x, str) else x)
         return df
     except Exception as e:
-        st.error(f"Erro ao normalizar strings: {str(e)}")
+        add_to_log(f"Erro ao normalizar strings: {str(e)}")
+        return df
+
+def process_faltas(df):
+    """Converte 'x' na coluna 'Falta' para o valor 1"""
+    try:
+        if 'Falta' in df.columns:
+            df['Falta'] = df['Falta'].apply(lambda x: str(x).count('x') if isinstance(x, str) else 0)
+            add_to_log("Coluna 'Falta' processada: valores 'x' convertidos para 1.")
+        else:
+            add_to_log("Coluna 'Falta' não encontrada no arquivo.")
+        return df
+    except Exception as e:
+        add_to_log(f"Erro ao processar faltas: {str(e)}")
         return df
 
 def calcular_premio(row):
@@ -45,8 +70,8 @@ def calcular_premio(row):
         if salario > SALARIO_LIMITE:
             return 'NÃO PAGAR - SALÁRIO MAIOR', 0
 
-        if row.get('Falta', None) or row.get('Afastamentos', None) or row.get('Ausência Integral', None) or row.get('Ausência Parcial', None):
-            if row.get('Falta', None):
+        if row.get('Falta', 0) > 0 or row.get('Afastamentos', None) or row.get('Ausência Integral', None) or row.get('Ausência Parcial', None):
+            if row.get('Falta', 0) > 0:
                 return 'NÃO PAGAR - FALTA', 0
             if row.get('Afastamentos', None):
                 return 'NÃO PAGAR - AFASTAMENTO', 0
@@ -62,25 +87,25 @@ def calcular_premio(row):
         return 'PAGAR - SEM OCORRÊNCIAS', PREMIO_VALOR_INTEGRAL
 
     except Exception as e:
-        st.error(f"Erro no cálculo do prêmio: {str(e)}")
+        add_to_log(f"Erro no cálculo do prêmio para linha: {row.to_dict()}. Erro: {str(e)}")
         return 'ERRO - VERIFICAR DADOS', 0
 
 def process_data(base_file, absence_file, model_file):
     """Processa os dados do arquivo base e de ausências e usa o modelo fornecido"""
     try:
-        # Ler arquivos
         df_base = read_excel(base_file, header_row=2)
         df_ausencias = read_excel(absence_file)
         df_model = read_excel(model_file)
 
         if df_base is None or df_ausencias is None or df_model is None:
+            add_to_log("Erro: Um ou mais arquivos não foram lidos corretamente.")
             return None
 
-        # Normalizar valores e strings
         df_base = normalize_strings(df_base)
         df_ausencias = normalize_strings(df_ausencias)
 
-        # Consolidação de ausências
+        # Processar faltas e consolidar ausências
+        df_ausencias = process_faltas(df_ausencias)
         df_base['Falta'] = df_ausencias.get('Falta', None)
         df_base['Afastamentos'] = df_ausencias.get('Afastamentos', None)
         df_base['Ausência Integral'] = df_ausencias.get('Ausência integral', None)
@@ -103,11 +128,10 @@ def process_data(base_file, absence_file, model_file):
 
         df_resultado = df_resultado[df_model.columns]
 
-        st.write("Pré-visualização do resultado consolidado:")
-        st.dataframe(df_resultado.head())
+        add_to_log("Processamento concluído com sucesso.")
         return df_resultado
     except Exception as e:
-        st.error(f"Erro ao processar dados: {str(e)}")
+        add_to_log(f"Erro ao processar dados: {str(e)}")
         return None
 
 def download_xlsx(df, filename):
@@ -121,7 +145,7 @@ def download_xlsx(df, filename):
         href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}">Download {filename}</a>'
         return href
     except Exception as e:
-        st.error(f"Erro ao criar link de download XLSX: {str(e)}")
+        add_to_log(f"Erro ao criar link de download XLSX: {str(e)}")
         return None
 
 def main():
@@ -151,9 +175,12 @@ def main():
                     st.markdown("### Resultado Consolidado")
                     st.dataframe(df_resultado)
                     
-                    st.markdown("### Download do Arquivo")
+                    st.markdown("### Download do Arquivo Consolidado")
                     st.markdown(download_xlsx(df_resultado, "resultado_assiduidade_consolidado.xlsx"), unsafe_allow_html=True)
+
+            st.markdown("### Download do Log")
+            log_file = generate_log_file()
+            st.download_button("Baixar Log de Processamento", data=log_file, file_name="log_processamento.txt")
 
 if __name__ == "__main__":
     main()
-
