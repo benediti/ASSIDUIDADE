@@ -146,22 +146,23 @@ def process_data(base_file, absence_file, model_file):
 
         df_ausencias = process_faltas(df_ausencias)
       
-       # Converte Matrícula para string e faz merge usando concat
+       # Converte Matrícula para string em ambos os dataframes
         df_base['Matrícula'] = df_base['Matrícula'].astype(str)
         df_ausencias['Matrícula'] = df_ausencias['Matrícula'].astype(str)
         
-        df_merge = pd.concat([
+        # Garantir que todas as colunas necessárias existam
+        colunas_ausencias = ['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']
+        for col in colunas_ausencias:
+            if col not in df_ausencias.columns:
+                df_ausencias[col] = None
+        
+        # Merge com tratamento de tipos
+        df_merge = pd.merge(
             df_base,
-            df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']]
-        ]).drop_duplicates(subset='Matrícula', keep='first')
-  
-        df_merge = df_merge.fillna({
-            'Falta': 0,
-            'Afastamentos': False,
-            'Ausência Integral': False,
-            'Ausência Parcial': False
-        })
-
+            df_ausencias[colunas_ausencias],
+            on='Matrícula',
+            how='left'
+        )
         resultados = []
         for _, row in df_merge.iterrows():
             status, valor = calcular_premio(row)
