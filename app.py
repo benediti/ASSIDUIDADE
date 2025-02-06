@@ -18,7 +18,6 @@ TIPOS_AFASTAMENTO = {
     'Falta': 'Falta',
     'Licença Médica': 'Licença',
     'Férias': 'Férias'
-    # Outros tipos podem ser adicionados aqui
 }
 
 def verificar_estrutura_dados_funcionarios(df):
@@ -165,6 +164,7 @@ def main():
                 st.success("Tipos de afastamento atualizados!")
     
     # Processamento da base de funcionários
+    df_funcionarios = None
     if uploaded_func is not None:
         try:
             df_funcionarios = pd.read_excel(uploaded_func)
@@ -186,6 +186,8 @@ def main():
                         st.success(msg)
                     else:
                         st.error(msg)
+        except Exception as e:
+            st.error(f"Erro ao processar base de funcionários: {str(e)}")
     
     # Processamento da base de ausências
     if uploaded_ausencias is not None:
