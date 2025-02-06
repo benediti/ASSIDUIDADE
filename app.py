@@ -130,39 +130,47 @@ def calcular_premio(row):
 def process_data(base_file, absence_file, model_file):
     try:
         df_base = read_excel(base_file)
+        add_to_log(f"Shape do arquivo base: {df_base.shape if df_base is not None else 'None'}")
+        
         df_ausencias = read_excel(absence_file)
+        add_to_log(f"Shape do arquivo ausências: {df_ausencias.shape if df_ausencias is not None else 'None'}")
+        
         df_model = read_excel(model_file)
+        add_to_log(f"Shape do arquivo modelo: {df_model.shape if df_model is not None else 'None'}")
 
         if any(df is None for df in [df_base, df_ausencias, df_model]):
             add_to_log("Um ou mais arquivos não foram lidos", 'error')
             return None
 
-        required_cols = {'Matrícula'}
-        for df, name in [(df_base, 'base'), (df_ausencias, 'ausencias')]:
-            missing = required_cols - set(df.columns)
-            if missing:
-                add_to_log(f"Colunas faltando em {name}: {missing}", 'error')
-                return None
-
+        # Processa faltas antes do merge
         df_ausencias = process_faltas(df_ausencias)
-      
-       # Converte Matrícula para string em ambos os dataframes
+        add_to_log("Processamento de faltas concluído")
+
+        # Converte Matrícula para string
         df_base['Matrícula'] = df_base['Matrícula'].astype(str)
         df_ausencias['Matrícula'] = df_ausencias['Matrícula'].astype(str)
         
-        # Garantir que todas as colunas necessárias existam
-        colunas_ausencias = ['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']
-        for col in colunas_ausencias:
-            if col not in df_ausencias.columns:
-                df_ausencias[col] = None
+        add_to_log(f"Colunas arquivo base: {df_base.columns.tolist()}")
+        add_to_log(f"Colunas arquivo ausências: {df_ausencias.columns.tolist()}")
         
-        # Merge com tratamento de tipos
+        # Merge com log detalhado
         df_merge = pd.merge(
             df_base,
-            df_ausencias[colunas_ausencias],
+            df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']],
             on='Matrícula',
             how='left'
         )
+        add_to_log(f"Shape após merge: {df_merge.shape}")
+
+        # Preenche valores nulos
+        df_merge = df_merge.fillna({
+            'Falta': 0,
+            'Afastamentos': False,
+            'Ausência Integral': False,
+            'Ausência Parcial': False
+        })
+        
+        # Processa resultados com log
         resultados = []
         for _, row in df_merge.iterrows():
             status, valor = calcular_premio(row)
@@ -172,17 +180,25 @@ def process_data(base_file, absence_file, model_file):
                 'Valor Prêmio': valor
             })
             resultados.append(row_dict)
-
+        
         df_resultado = pd.DataFrame(resultados)
-
-        for col in df_model.columns:
+        add_to_log(f"Shape após processamento: {df_resultado.shape}")
+        
+        # Ajuste ao modelo com log
+        colunas_modelo = df_model.columns.tolist()
+        add_to_log(f"Colunas do modelo: {colunas_modelo}")
+        
+        for col in colunas_modelo:
             if col not in df_resultado.columns:
                 df_resultado[col] = None
-
-        return df_resultado[df_model.columns]
+                
+        df_final = df_resultado[colunas_modelo]
+        add_to_log(f"Shape final: {df_final.shape}")
+        
+        return df_final
 
     except Exception as e:
-        add_to_log(f"Erro no processamento: {str(e)}", 'error')
+        add_to_log(f"Erro no processamento: {str(e)}\n{traceback.format_exc()}", 'error')
         return None
 
 def main():
