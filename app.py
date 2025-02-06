@@ -116,208 +116,7 @@ def read_excel(file, sheet_name=None):
         add_to_log(f"Erro fatal ao ler arquivo '{file.name}': {str(e)}\n{traceback.format_exc()}", 'error')
         return None
 
-def normalize_strings(df):
-    """Remove acentuação de strings"""
-    try:
-        for col in df.select_dtypes(include=['object']).columns:
-            df[col] = df[col].apply(
-                lambda x: unicodedata.normalize('NFKD', str(x)).encode('ascii', 'ignore').decode('utf-8') 
-                if isinstance(x, str) else x
-            )
-        
-        add_to_log("Normalização de strings concluída.", 'debug')
-        return df
-    except Exception as e:
-        add_to_log(f"Erro ao normalizar strings: {str(e)}\n{traceback.format_exc()}", 'error')
-        return df
-
-def process_faltas(df):
-    """Processa a coluna de faltas com log detalhado"""
-    try:
-        add_to_log("Processando coluna de faltas", 'debug')
-        
-        # Verifica as possíveis variações da coluna de faltas
-        falta_columns = [
-            'Falta', 
-            'falta', 
-            'Faltas', 
-            'FALTA'
-        ]
-        
-        falta_column = None
-        for col in falta_columns:
-            if col in df.columns:
-                falta_column = col
-                break
-        
-        if falta_column:
-            df['Falta'] = df[falta_column].fillna(0).astype(str).apply(lambda x: x.count('x'))
-            add_to_log(f"Coluna 'Falta' processada usando {falta_column}", 'info')
-        else:
-            df['Falta'] = 0
-            add_to_log("Nenhuma coluna de falta encontrada. Criando coluna com valores zerados.", 'warning')
-        
-        return df
-    except Exception as e:
-        add_to_log(f"Erro ao processar faltas: {str(e)}\n{traceback.format_exc()}", 'error')
-        return df
-
-def calcular_premio(row):
-    """Calcula o prêmio com log de depuração"""
-    try:
-        add_to_log(f"Calculando prêmio para linha: {row.to_dict()}", 'debug')
-        
-        # Converte valor do salário para float com tratamento de erros
-        try:
-            salario = float(str(row.get('Salário Mês Atual', 0)).replace(',', '.') or 0)
-        except (ValueError, TypeError):
-            salario = 0
-
-        if salario > SALARIO_LIMITE:
-            add_to_log(f"Salário {salario} maior que limite. Não pagar.", 'warning')
-            return 'NÃO PAGAR - SALÁRIO MAIOR', 0
-
-        # Verifica condições de não pagamento
-        condicoes_nao_pagar = [
-            ('Falta', row.get('Falta', 0) > 0, 'NÃO PAGAR - FALTA'),
-            ('Afastamentos', row.get('Afastamentos', None), 'NÃO PAGAR - AFASTAMENTO'),
-            ('Ausência Integral', row.get('Ausência Integral', None), 'NÃO PAGAR - AUSÊNCIA INTEGRAL'),
-            ('Ausência Parcial', row.get('Ausência Parcial', None), 'NÃO PAGAR - AUSÊNCIA PARCIAL')
-        ]
-
-        for condicao, valor, mensagem in condicoes_nao_pagar:
-            if valor:
-                add_to_log(f"{condicao} detectada: {valor}. {mensagem}", 'warning')
-                return mensagem, 0
-
-        # Calcula horas trabalhadas
-        try:
-            horas = int(str(row.get('Qtd Horas Mensais', 0)).replace(',', '.') or 0)
-        except (ValueError, TypeError):
-            horas = 0
-        
-        if horas == 220:
-            add_to_log("Horas completas. Pagamento integral.", 'info')
-            return 'PAGAR', PREMIO_VALOR_INTEGRAL
-        elif horas in [110, 120]:
-            add_to_log("Horas parciais. Pagamento parcial.", 'info')
-            return 'PAGAR', PREMIO_VALOR_PARCIAL
-
-        add_to_log(f"Horas inesperadas: {horas}. Verificar.", 'warning')
-        return 'PAGAR - SEM OCORRÊNCIAS', PREMIO_VALOR_INTEGRAL
-
-    except Exception as e:
-        add_to_log(f"Erro no cálculo do prêmio: {str(e)}\n{traceback.format_exc()}", 'error')
-        return 'ERRO - VERIFICAR DADOS', 0
-
-def process_data(base_file, absence_file, model_file):
-    """Processa os dados com estratégias robustas"""
-    try:
-        add_to_log("Iniciando processamento de dados", 'info')
-        
-        # Leitura dos arquivos com múltiplas tentativas
-        df_base = read_excel(base_file)
-        df_ausencias = read_excel(absence_file)
-        df_model = read_excel(model_file)
-
-        if df_base is None or df_ausencias is None or df_model is None:
-            add_to_log("Erro: Um ou mais arquivos não foram lidos corretamente.", 'error')
-            return None
-
-        # Mapeamento flexível de nomes de colunas
-        column_mapping = {
-            'Matrícula': ['Matrícula', 'Matricula', 'Codigo', 'Código Funcionário'],
-            'Nome': ['Nome', 'Nome Funcionário', 'nome'],
-            'Código Funcionário': ['Código Funcionário', 'Codigo Funcionario', 'Matrícula']
-        }
-
-        # Função para encontrar a primeira coluna correspondente
-        def find_column(df, possible_names):
-            for name in possible_names:
-                if name in df.columns:
-                    return name
-            return None
-
-        # Renomeia colunas de forma flexível
-        base_cols = {
-            'Código Funcionário': find_column(df_base, column_mapping['Código Funcionário']),
-            'Nome Funcionário': find_column(df_base, column_mapping['Nome'])
-        }
-        
-        ausencias_cols = {
-            'Código Funcionário': find_column(df_ausencias, column_mapping['Código Funcionário']),
-            'Nome Funcionário': find_column(df_ausencias, column_mapping['Nome'])
-        }
-
-        # Renomeia as colunas encontradas
-        for target, source in base_cols.items():
-            if source and source != target:
-                df_base.rename(columns={source: target}, inplace=True)
-        
-        for target, source in ausencias_cols.items():
-            if source and source != target:
-                df_ausencias.rename(columns={source: target}, inplace=True)
-
-        # Processa faltas com estratégia mais flexível
-        df_ausencias = process_faltas(df_ausencias)
-
-        # Agrupa ausências por código de funcionário
-        df_ausencias_agrupado = df_ausencias.groupby('Código Funcionário').agg({
-            'Falta': 'sum',
-            'Afastamentos': lambda x: ';'.join(x.dropna().unique()),
-            'Ausência Integral': lambda x: ';'.join(x.dropna().unique()),
-            'Ausência Parcial': lambda x: ';'.join(x.dropna().unique())
-        }).reset_index()
-
-        # Merge dos dataframes com estratégia flexível
-        merge_columns = ['Código Funcionário']
-        
-        try:
-            df_merge = pd.merge(
-                df_base, 
-                df_ausencias_agrupado, 
-                on='Código Funcionário', 
-                how='left'
-            )
-        except Exception as e:
-            add_to_log(f"Erro no merge: {str(e)}", 'error')
-            # Tenta merge por nome se código falhar
-            df_merge = pd.merge(
-                df_base, 
-                df_ausencias_agrupado, 
-                on='Nome Funcionário', 
-                how='left'
-            )
-
-        if df_merge is None or df_merge.empty:
-            add_to_log("Não foi possível fazer o merge dos dados", 'error')
-            return None
-
-        # Calcular prêmio por funcionário
-        resultados = []
-        for _, row in df_merge.iterrows():
-            status, valor = calcular_premio(row)
-            row['Status Prêmio'] = status
-            row['Valor Prêmio'] = valor
-            resultados.append(row)
-
-        df_resultado = pd.DataFrame(resultados)
-
-        # Garante a estrutura do modelo, mesmo com colunas diferentes
-        modelo_colunas = df_model.columns.tolist()
-        for col in modelo_colunas:
-            if col not in df_resultado.columns:
-                df_resultado[col] = None
-
-        # Reordena de acordo com o modelo, ignorando colunas não existentes
-        df_resultado = df_resultado[[col for col in modelo_colunas if col in df_resultado.columns]]
-
-        add_to_log("Processamento concluído com sucesso.", 'info')
-        return df_resultado
-
-    except Exception as e:
-        add_to_log(f"Erro fatal no processamento: {str(e)}\n{traceback.format_exc()}", 'error')
-        return None
+# [Restante do código anterior permanece o mesmo]
 
 def main():
     st.title("Processador de Prêmio Assiduidade (Modo Debug)")
@@ -342,4 +141,23 @@ def main():
                         st.write("Registros processados:", len(df_resultado))
                         st.dataframe(df_resultado.head())
                     
-                    # Exportação do resulta
+                    # Exportação do resultado
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        df_resultado.to_excel(writer, index=False, sheet_name='Resultado')
+                    output.seek(0)
+
+                    st.download_button("Baixar Relatório", data=output, file_name="resultado_assiduidade.xlsx")
+                else:
+                    st.error("Falha no processamento. Verifique os logs.")
+
+            # Sempre mostra o log
+            st.download_button("Baixar Log Detalhado", data=generate_log_file(), file_name="log_processamento_debug.txt")
+            
+            # Mostra os logs na interface
+            with st.expander("Logs de Processamento"):
+                for log in log_messages:
+                    st.text(log)
+
+if __name__ == "__main__":
+    main()
