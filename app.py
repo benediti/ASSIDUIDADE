@@ -29,6 +29,10 @@ def verificar_estrutura_dados(df):
         "Salario_Mes_Atual": "numeric"
     }
     
+    # Colunas que podem conter valores nulos
+    colunas_permitir_nulos = ["Data_Termino_Contrato", "Dias_Experiencia"]
+    
+    info = []
     erros = []
     
     # Verificar colunas presentes
@@ -45,13 +49,22 @@ def verificar_estrutura_dados(df):
             # Verificar valores nulos
             nulos = df[coluna].isnull().sum()
             if nulos > 0:
-                erros.append(f"Coluna {coluna} contém {nulos} valores nulos")
+                if coluna in colunas_permitir_nulos:
+                    info.append(f"Informação: Coluna {coluna} contém {nulos} valores em branco (permitido)")
+                else:
+                    erros.append(f"Coluna {coluna} contém {nulos} valores nulos")
             
             # Verificar tipos de dados
             if tipo == "numeric":
-                df[coluna] = pd.to_numeric(df[coluna], errors='raise')
+                if coluna in colunas_permitir_nulos:
+                    df[coluna] = pd.to_numeric(df[coluna], errors='coerce')
+                else:
+                    df[coluna] = pd.to_numeric(df[coluna], errors='raise')
             elif tipo == "datetime":
-                df[coluna] = pd.to_datetime(df[coluna], errors='raise')
+                if coluna in colunas_permitir_nulos:
+                    df[coluna] = pd.to_datetime(df[coluna], errors='coerce')
+                else:
+                    df[coluna] = pd.to_datetime(df[coluna], errors='raise')
             elif tipo == "string":
                 df[coluna] = df[coluna].astype(str)
         
@@ -116,7 +129,10 @@ def main():
                 # Exibir resultados da verificação
                 with st.expander("Log de Validação", expanded=True):
                     for msg in mensagens:
-                        if sucesso:
+                        if msg.startswith("Informação:"):
+                            st.info(msg)
+                            logging.info(msg)
+                        elif sucesso:
                             st.success(msg)
                             logging.info(msg)
                         else:
