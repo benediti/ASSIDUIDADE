@@ -1,5 +1,5 @@
 """
-Processador de Prêmio Assiduidade - Versão Corrigida
+Processador de Prêmio Assiduidade - Versão Robusta
 """
 
 import streamlit as st
@@ -65,6 +65,56 @@ def debug_dataframe(df, name):
     if null_counts.any():
         add_to_log(f"Null value counts:\n{null_counts}", 'warning')
 
+def read_excel(file, sheet_name=None):
+    """Lê um arquivo Excel com estratégias robustas de leitura"""
+    try:
+        add_to_log(f"Tentando ler arquivo: {file.name}", 'debug')
+        
+        # Lê todo o arquivo para inspeção
+        xls = pd.ExcelFile(file)
+        sheet_options = xls.sheet_names if sheet_name is None else [sheet_name]
+        
+        # Estratégias de leitura
+        header_options = [0, 1, None]
+        
+        for sheet in sheet_options:
+            for header in header_options:
+                try:
+                    # Lê o DataFrame 
+                    df = pd.read_excel(
+                        file, 
+                        sheet_name=sheet, 
+                        header=header, 
+                        engine='openpyxl'
+                    )
+                    
+                    # Remove colunas sem nome
+                    if header is not None:
+                        df.columns = [str(col).strip() for col in df.columns]
+                    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+                    
+                    # Filtra linhas totalmente vazias
+                    df = df.dropna(how='all')
+                    
+                    # Verifica se o DataFrame não está vazio
+                    if not df.empty and len(df.columns) > 0:
+                        add_to_log(f"Arquivo '{file.name}' lido com sucesso. Planilha: {sheet}, Header: {header}", 'info')
+                        
+                        # Debug detalhado
+                        debug_dataframe(df, file.name)
+                        
+                        return df
+                
+                except Exception as inner_e:
+                    add_to_log(f"Falha na leitura. Sheet: {sheet}, Header: {header}. Erro: {str(inner_e)}", 'debug')
+        
+        # Se chegar aqui, nenhuma estratégia funcionou
+        add_to_log(f"Falha total ao ler o arquivo {file.name}", 'error')
+        return None
+    
+    except Exception as e:
+        add_to_log(f"Erro fatal ao ler arquivo '{file.name}': {str(e)}\n{traceback.format_exc()}", 'error')
+        return None
 
 def normalize_strings(df):
     """Remove acentuação de strings"""
@@ -211,26 +261,33 @@ def process_data(base_file, absence_file, model_file):
         # Processa faltas com estratégia mais flexível
         df_ausencias = process_faltas(df_ausencias)
 
-        # Merge dos dataframes com estratégia flexível
-        merge_columns = ['Código Funcionário', 'Nome Funcionário']
-        merge_estrategias = [
-            {'on': 'Código Funcionário', 'how': 'left'},
-            {'on': 'Nome Funcionário', 'how': 'left'}
-        ]
+        # Agrupa ausências por código de funcionário
+        df_ausencias_agrupado = df_ausencias.groupby('Código Funcionário').agg({
+            'Falta': 'sum',
+            'Afastamentos': lambda x: ';'.join(x.dropna().unique()),
+            'Ausência Integral': lambda x: ';'.join(x.dropna().unique()),
+            'Ausência Parcial': lambda x: ';'.join(x.dropna().unique())
+        }).reset_index()
 
-        df_merge = None
-        for estrategia in merge_estrategias:
-            try:
-                df_merge = pd.merge(
-                    df_base, 
-                    df_ausencias[merge_columns + ['Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']],
-                    **estrategia
-                )
-                
-                if not df_merge.empty:
-                    break
-            except Exception as e:
-                add_to_log(f"Falha no merge com {estrategia}: {str(e)}", 'warning')
+        # Merge dos dataframes com estratégia flexível
+        merge_columns = ['Código Funcionário']
+        
+        try:
+            df_merge = pd.merge(
+                df_base, 
+                df_ausencias_agrupado, 
+                on='Código Funcionário', 
+                how='left'
+            )
+        except Exception as e:
+            add_to_log(f"Erro no merge: {str(e)}", 'error')
+            # Tenta merge por nome se código falhar
+            df_merge = pd.merge(
+                df_base, 
+                df_ausencias_agrupado, 
+                on='Nome Funcionário', 
+                how='left'
+            )
 
         if df_merge is None or df_merge.empty:
             add_to_log("Não foi possível fazer o merge dos dados", 'error')
@@ -285,23 +342,4 @@ def main():
                         st.write("Registros processados:", len(df_resultado))
                         st.dataframe(df_resultado.head())
                     
-                    # Exportação do resultado
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df_resultado.to_excel(writer, index=False, sheet_name='Resultado')
-                    output.seek(0)
-
-                    st.download_button("Baixar Relatório", data=output, file_name="resultado_assiduidade.xlsx")
-                else:
-                    st.error("Falha no processamento. Verifique os logs.")
-
-            # Sempre mostra o log
-            st.download_button("Baixar Log Detalhado", data=generate_log_file(), file_name="log_processamento_debug.txt")
-            
-            # Mostra os logs na interface
-            with st.expander("Logs de Processamento"):
-                for log in log_messages:
-                    st.text(log)
-
-if __name__ == "__main__":
-    main()
+                    # Exportação do resulta
