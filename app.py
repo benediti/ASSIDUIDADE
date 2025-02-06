@@ -146,12 +146,14 @@ def process_data(base_file, absence_file, model_file):
 
         df_ausencias = process_faltas(df_ausencias)
       
-        df_merge = pd.merge(
+       # Converte Matrícula para string e faz merge usando concat
+        df_base['Matrícula'] = df_base['Matrícula'].astype(str)
+        df_ausencias['Matrícula'] = df_ausencias['Matrícula'].astype(str)
+        
+        df_merge = pd.concat([
             df_base,
-            df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']],
-            on='Matrícula',
-            how='left'
-        )
+            df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']]
+        ]).drop_duplicates(subset='Matrícula', keep='first')
   
         df_merge = df_merge.fillna({
             'Falta': 0,
