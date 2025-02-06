@@ -145,14 +145,14 @@ def process_data(base_file, absence_file, model_file):
                 return None
 
         df_ausencias = process_faltas(df_ausencias)
-
+      
         df_merge = pd.merge(
             df_base,
             df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']],
             on='Matrícula',
             how='left'
         )
-
+  
         df_merge = df_merge.fillna({
             'Falta': 0,
             'Afastamentos': False,
