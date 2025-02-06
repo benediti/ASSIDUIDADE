@@ -123,6 +123,9 @@ def main():
                     "Dias_Experiencia", "Salario_Mes_Atual"
                 ]
                 
+                # Convertendo a coluna Matricula para inteiro
+                df_funcionarios['Matricula'] = df_funcionarios['Matricula'].astype(int)
+                
                 # Verificar estrutura dos dados
                 sucesso, mensagens = verificar_estrutura_dados(df_funcionarios)
                 
@@ -198,6 +201,10 @@ def main():
         st.dataframe(
             df_filtrado,
             column_config={
+                "Matricula": st.column_config.NumberColumn(
+                    "Matrícula",
+                    format="%d"
+                ),
                 "Salario_Mes_Atual": st.column_config.NumberColumn(
                     "Salário",
                     format="R$ %.2f"
