@@ -38,24 +38,16 @@ def read_excel(file, sheet_name=0):
         df = pd.read_excel(
             file,
             sheet_name=sheet_name,
+            header=0,  # Força leitura do cabeçalho na primeira linha
             engine='openpyxl'
         )
-        
-        if df.empty:
-            df = pd.read_excel(
-                file,
-                sheet_name=sheet_name,
-                header=None,
-                engine='openpyxl'
-            )
         
         df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
         
         if not df.empty:
-            df.columns = df.columns.astype(str)
-            df.columns = df.columns.str.strip()
-            
+            df.columns = [str(col).strip() for col in df.columns]
             add_to_log(f"Arquivo {file.name} lido com sucesso", 'info')
+            add_to_log(f"Colunas encontradas: {df.columns.tolist()}", 'debug')
             return df
             
         add_to_log(f"Arquivo {file.name} está vazio", 'error')
@@ -129,16 +121,24 @@ def calcular_premio(row):
 
 def process_data(base_file, absence_file, model_file):
     try:
+        # Leitura dos arquivos
         df_base = read_excel(base_file)
         add_to_log(f"Shape do arquivo base: {df_base.shape if df_base is not None else 'None'}")
         
         df_ausencias = read_excel(absence_file)
         add_to_log(f"Shape do arquivo ausências: {df_ausencias.shape if df_ausencias is not None else 'None'}")
         
-        df_model = read_excel(model_file)
-        add_to_log(f"Shape do arquivo modelo: {df_model.shape if df_model is not None else 'None'}")
+        # Lê o modelo com cabeçalho específico
+        df_model = pd.read_excel(
+            model_file,
+            header=0,
+            engine='openpyxl'
+        )
+        df_model.columns = [str(col).strip() for col in df_model.columns]
+        add_to_log(f"Shape do arquivo modelo: {df_model.shape}")
+        add_to_log(f"Colunas do modelo: {df_model.columns.tolist()}")
 
-        if any(df is None for df in [df_base, df_ausencias, df_model]):
+        if any(df is None for df in [df_base, df_ausencias]):
             add_to_log("Um ou mais arquivos não foram lidos", 'error')
             return None
 
@@ -184,16 +184,15 @@ def process_data(base_file, absence_file, model_file):
         df_resultado = pd.DataFrame(resultados)
         add_to_log(f"Shape após processamento: {df_resultado.shape}")
         
-        # Ajuste ao modelo com log
-        colunas_modelo = df_model.columns.tolist()
-        add_to_log(f"Colunas do modelo: {colunas_modelo}")
-        
-        for col in colunas_modelo:
+        # Garante que todas as colunas do modelo existam no resultado
+        for col in df_model.columns:
             if col not in df_resultado.columns:
                 df_resultado[col] = None
-                
-        df_final = df_resultado[colunas_modelo]
+
+        # Reordena as colunas conforme o modelo
+        df_final = df_resultado[df_model.columns]
         add_to_log(f"Shape final: {df_final.shape}")
+        add_to_log(f"Colunas finais: {df_final.columns.tolist()}")
         
         return df_final
 
