@@ -40,8 +40,41 @@ def verificar_estrutura_dados_funcionarios(df):
     info = []
     erros = []
     
-    # Verificações...
-    [código anterior de verificação mantido]
+    # Verificar colunas presentes
+    for coluna in colunas_esperadas.keys():
+        if coluna not in df.columns:
+            erros.append(f"Coluna ausente: {coluna}")
+    
+    if erros:
+        return False, erros
+    
+    # Verificar tipos de dados e valores nulos
+    for coluna, tipo in colunas_esperadas.items():
+        try:
+            # Verificar valores nulos
+            nulos = df[coluna].isnull().sum()
+            if nulos > 0:
+                if coluna in colunas_permitir_nulos:
+                    info.append(f"Informação: Coluna {coluna} contém {nulos} valores em branco (permitido)")
+                else:
+                    erros.append(f"Coluna {coluna} contém {nulos} valores nulos")
+            
+            # Verificar tipos de dados
+            if tipo == "numeric":
+                if coluna in colunas_permitir_nulos:
+                    df[coluna] = pd.to_numeric(df[coluna], errors='coerce')
+                else:
+                    df[coluna] = pd.to_numeric(df[coluna], errors='raise')
+            elif tipo == "datetime":
+                if coluna in colunas_permitir_nulos:
+                    df[coluna] = pd.to_datetime(df[coluna], errors='coerce')
+                else:
+                    df[coluna] = pd.to_datetime(df[coluna], errors='raise')
+            elif tipo == "string":
+                df[coluna] = df[coluna].astype(str)
+        
+        except Exception as e:
+            erros.append(f"Erro na coluna {coluna}: {str(e)}")
     
     return len(erros) == 0, info + erros
 
