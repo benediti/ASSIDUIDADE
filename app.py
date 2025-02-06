@@ -38,7 +38,7 @@ def read_excel(file, sheet_name=0):
         df = pd.read_excel(
             file,
             sheet_name=sheet_name,
-            header=0,  # Força leitura do cabeçalho na primeira linha
+            header=0,
             engine='openpyxl'
         )
         
@@ -95,8 +95,8 @@ def calcular_premio(row):
         condicoes_nao_pagar = [
             ('Falta', row.get('Falta', 0) > 0, 'NÃO PAGAR - FALTA'),
             ('Afastamentos', row.get('Afastamentos', None), 'NÃO PAGAR - AFASTAMENTO'),
-            ('Ausência Integral', row.get('Ausência Integral', None), 'NÃO PAGAR - AUSÊNCIA INTEGRAL'),
-            ('Ausência Parcial', row.get('Ausência Parcial', None), 'NÃO PAGAR - AUSÊNCIA PARCIAL')
+            ('Ausência integral', row.get('Ausência integral', None), 'NÃO PAGAR - AUSÊNCIA INTEGRAL'),
+            ('Ausência parcial', row.get('Ausência parcial', None), 'NÃO PAGAR - AUSÊNCIA PARCIAL')
         ]
 
         for _, valor, mensagem in condicoes_nao_pagar:
@@ -150,13 +150,21 @@ def process_data(base_file, absence_file, model_file):
         df_base['Matrícula'] = df_base['Matrícula'].astype(str)
         df_ausencias['Matrícula'] = df_ausencias['Matrícula'].astype(str)
         
-        add_to_log(f"Colunas arquivo base: {df_base.columns.tolist()}")
-        add_to_log(f"Colunas arquivo ausências: {df_ausencias.columns.tolist()}")
+        # Renomeia colunas do df_ausencias para corresponder ao modelo
+        df_ausencias = df_ausencias.rename(columns={
+            'Ausência Integral': 'Ausência integral',
+            'Ausência Parcial': 'Ausência parcial',
+            'Dia': 'Dia.1'
+        })
         
-        # Merge com log detalhado
+        add_to_log(f"Colunas arquivo base: {df_base.columns.tolist()}")
+        add_to_log(f"Colunas arquivo ausências após renomeação: {df_ausencias.columns.tolist()}")
+        
+        # Merge com todas as colunas necessárias
         df_merge = pd.merge(
             df_base,
-            df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']],
+            df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência integral', 
+                         'Ausência parcial', 'Dia.1']],
             on='Matrícula',
             how='left'
         )
@@ -166,23 +174,31 @@ def process_data(base_file, absence_file, model_file):
         df_merge = df_merge.fillna({
             'Falta': 0,
             'Afastamentos': False,
-            'Ausência Integral': False,
-            'Ausência Parcial': False
+            'Ausência integral': False,
+            'Ausência parcial': False,
+            'Dia.1': ''
         })
         
-        # Processa resultados com log
+        # Processa resultados
         resultados = []
         for _, row in df_merge.iterrows():
             status, valor = calcular_premio(row)
             row_dict = row.to_dict()
             row_dict.update({
-                'Status Prêmio': status,
+                'Prêmio (Sim/Não)': status,
                 'Valor Prêmio': valor
             })
             resultados.append(row_dict)
         
         df_resultado = pd.DataFrame(resultados)
         add_to_log(f"Shape após processamento: {df_resultado.shape}")
+        
+        # Ajusta colunas conforme modelo
+        df_resultado = df_resultado.rename(columns={
+            'Cargo': 'Cargo Atual',
+            'Nome Local': 'Nome Local Funcionário',
+            'Data Término Contrato': 'Data Term Contrato'
+        })
         
         # Garante que todas as colunas do modelo existam no resultado
         for col in df_model.columns:
