@@ -1,271 +1,200 @@
 import streamlit as st
 import pandas as pd
-import unicodedata
-import traceback
-from io import BytesIO
+import os
+from datetime import datetime
 import logging
 
-logging.basicConfig(level=logging.DEBUG, 
-                    format='%(asctime)s - %(levelname)s: %(message)s')
+# Configuração do logging
+logging.basicConfig(
+    filename='sistema_premios.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
-log_messages = []
-
-def add_to_log(message, level='info'):
-    global log_messages
-    log_entry = f"{level.upper()}: {message}"
-    log_messages.append(log_entry)
+def verificar_estrutura_dados(df):
+    """
+    Verifica se todas as colunas necessárias estão presentes e com os tipos corretos
+    Retorna (sucesso, mensagem)
+    """
+    colunas_esperadas = {
+        "Matricula": "numeric",
+        "Nome_Funcionario": "string",
+        "Cargo": "string",
+        "Codigo_Local": "numeric",
+        "Nome_Local": "string",
+        "Qtd_Horas_Mensais": "numeric",
+        "Tipo_Contrato": "string",
+        "Data_Termino_Contrato": "datetime",
+        "Dias_Experiencia": "numeric",
+        "Salario_Mes_Atual": "numeric"
+    }
     
-    if level == 'debug':
-        logging.debug(message)
-    elif level == 'warning':
-        logging.warning(message)
-    elif level == 'error':
-        logging.error(message)
-    else:
-        logging.info(message)
-
-def generate_log_file():
-    log_data = "\n".join(log_messages)
-    return BytesIO(log_data.encode('utf-8'))
-
-PREMIO_VALOR_INTEGRAL = 300.00
-PREMIO_VALOR_PARCIAL = 150.00
-SALARIO_LIMITE = 2542.86
-
-def read_excel(file, sheet_name=0):
-    """Lê arquivo Excel com tratamento robusto"""
-    try:
-        df = pd.read_excel(
-            file,
-            sheet_name=sheet_name,
-            header=0,
-            engine='openpyxl'
-        )
-        
-        df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
-        
-        if not df.empty:
-            df.columns = [str(col).strip() for col in df.columns]
-            add_to_log(f"Arquivo {file.name} lido com sucesso", 'info')
-            add_to_log(f"Colunas encontradas: {df.columns.tolist()}", 'debug')
-            return df
-            
-        add_to_log(f"Arquivo {file.name} está vazio", 'error')
-        return None
-        
-    except Exception as e:
-        add_to_log(f"Erro ao ler {file.name}: {str(e)}", 'error')
-        return None
-
-def process_faltas(df):
-    """Processa faltas com tratamento robusto"""
-    try:
-        falta_cols = ['Falta', 'falta', 'Faltas', 'FALTA', 'FALTAS']
-        
-        falta_col = None
-        for col in df.columns:
-            if any(fc.lower() in col.lower() for fc in falta_cols):
-                falta_col = col
-                break
-        
-        if falta_col:
-            df['Falta'] = df[falta_col].fillna('').astype(str).apply(
-                lambda x: x.lower().count('x') + x.count('1')
-            )
-        else:
-            df['Falta'] = 0
-            
-        return df
-        
-    except Exception as e:
-        add_to_log(f"Erro no processamento de faltas: {str(e)}", 'error')
-        df['Falta'] = 0
-        return df
-
-def calcular_premio(row):
-    try:
+    erros = []
+    
+    # Verificar colunas presentes
+    for coluna in colunas_esperadas.keys():
+        if coluna not in df.columns:
+            erros.append(f"Coluna ausente: {coluna}")
+    
+    if erros:
+        return False, erros
+    
+    # Verificar tipos de dados e valores nulos
+    for coluna, tipo in colunas_esperadas.items():
         try:
-            salario = float(str(row.get('Salário Mês Atual', 0)).replace(',', '.') or 0)
-        except (ValueError, TypeError):
-            salario = 0
-
-        if salario > SALARIO_LIMITE:
-            return 'NÃO PAGAR - SALÁRIO MAIOR', 0
-
-        condicoes_nao_pagar = [
-            ('Falta', row.get('Falta', 0) > 0, 'NÃO PAGAR - FALTA'),
-            ('Afastamentos', row.get('Afastamentos', None), 'NÃO PAGAR - AFASTAMENTO'),
-            ('Ausência integral', row.get('Ausência integral', None), 'NÃO PAGAR - AUSÊNCIA INTEGRAL'),
-            ('Ausência parcial', row.get('Ausência parcial', None), 'NÃO PAGAR - AUSÊNCIA PARCIAL')
-        ]
-
-        for _, valor, mensagem in condicoes_nao_pagar:
-            if valor:
-                return mensagem, 0
-
-        try:
-            horas = int(str(row.get('Qtd Horas Mensais', 0)).replace(',', '.') or 0)
-        except (ValueError, TypeError):
-            horas = 0
+            # Verificar valores nulos
+            nulos = df[coluna].isnull().sum()
+            if nulos > 0:
+                erros.append(f"Coluna {coluna} contém {nulos} valores nulos")
+            
+            # Verificar tipos de dados
+            if tipo == "numeric":
+                df[coluna] = pd.to_numeric(df[coluna], errors='raise')
+            elif tipo == "datetime":
+                df[coluna] = pd.to_datetime(df[coluna], errors='raise')
+            elif tipo == "string":
+                df[coluna] = df[coluna].astype(str)
         
-        if horas == 220:
-            return 'PAGAR', PREMIO_VALOR_INTEGRAL
-        elif horas in [110, 120]:
-            return 'PAGAR', PREMIO_VALOR_PARCIAL
+        except Exception as e:
+            erros.append(f"Erro na coluna {coluna}: {str(e)}")
+    
+    if erros:
+        return False, erros
+    
+    return True, ["Todas as colunas foram validadas com sucesso!"]
 
-        return 'PAGAR - SEM OCORRÊNCIAS', PREMIO_VALOR_INTEGRAL
+def carregar_base_funcionarios():
+    """Carrega a base de funcionários do arquivo salvo"""
+    if os.path.exists("base_funcionarios.pkl"):
+        return pd.read_pickle("base_funcionarios.pkl")
+    return None
 
-    except Exception as e:
-        add_to_log(f"Erro no cálculo do prêmio: {str(e)}", 'error')
-        return 'ERRO - VERIFICAR DADOS', 0
-
-def process_data(base_file, absence_file, model_file):
-    try:
-        # Leitura dos arquivos
-        df_base = read_excel(base_file)
-        add_to_log(f"Shape do arquivo base: {df_base.shape if df_base is not None else 'None'}")
-        
-        df_ausencias = read_excel(absence_file)
-        add_to_log(f"Shape do arquivo ausências: {df_ausencias.shape if df_ausencias is not None else 'None'}")
-        
-        # Lê o modelo com cabeçalho específico
-        df_model = pd.read_excel(
-            model_file,
-            header=0,
-            engine='openpyxl'
-        )
-        df_model.columns = [str(col).strip() for col in df_model.columns]
-        add_to_log(f"Shape do arquivo modelo: {df_model.shape}")
-        add_to_log(f"Colunas do modelo: {df_model.columns.tolist()}")
-
-        if any(df is None for df in [df_base, df_ausencias]):
-            add_to_log("Um ou mais arquivos não foram lidos", 'error')
-            return None
-
-        # Processa faltas antes do merge
-        df_ausencias = process_faltas(df_ausencias)
-        add_to_log("Processamento de faltas concluído")
-
-        # Converte Matrícula para string
-        df_base['Matrícula'] = df_base['Matrícula'].astype(str)
-        df_ausencias['Matrícula'] = df_ausencias['Matrícula'].astype(str)
-        
-        # Renomeia colunas do df_ausencias para corresponder ao modelo
-        df_ausencias = df_ausencias.rename(columns={
-            'Ausência Integral': 'Ausência integral',
-            'Ausência Parcial': 'Ausência parcial',
-            'Dia': 'Dia.1'
-        })
-        
-        add_to_log(f"Colunas arquivo base: {df_base.columns.tolist()}")
-        add_to_log(f"Colunas arquivo ausências após renomeação: {df_ausencias.columns.tolist()}")
-        
-        # Merge com todas as colunas necessárias
-        df_merge = pd.merge(
-            df_base,
-            df_ausencias[['Matrícula', 'Falta', 'Afastamentos', 'Ausência integral', 
-                         'Ausência parcial', 'Dia.1']],
-            on='Matrícula',
-            how='left'
-        )
-        add_to_log(f"Shape após merge: {df_merge.shape}")
-
-        # Preenche valores nulos
-        df_merge = df_merge.fillna({
-            'Falta': 0,
-            'Afastamentos': False,
-            'Ausência integral': False,
-            'Ausência parcial': False,
-            'Dia.1': ''
-        })
-        
-        # Processa resultados
-        resultados = []
-        for _, row in df_merge.iterrows():
-            status, valor = calcular_premio(row)
-            row_dict = row.to_dict()
-            row_dict.update({
-                'Prêmio (Sim/Não)': status,
-                'Valor Prêmio': valor
-            })
-            resultados.append(row_dict)
-        
-        df_resultado = pd.DataFrame(resultados)
-        add_to_log(f"Shape após processamento: {df_resultado.shape}")
-        
-        # Ajusta colunas conforme modelo
-        df_resultado = df_resultado.rename(columns={
-            'Cargo': 'Cargo Atual',
-            'Nome Local': 'Nome Local Funcionário',
-            'Data Término Contrato': 'Data Term Contrato'
-        })
-        
-        # Garante que todas as colunas do modelo existam no resultado
-        for col in df_model.columns:
-            if col not in df_resultado.columns:
-                df_resultado[col] = None
-
-        # Reordena as colunas conforme o modelo
-        df_final = df_resultado[df_model.columns]
-        add_to_log(f"Shape final: {df_final.shape}")
-        add_to_log(f"Colunas finais: {df_final.columns.tolist()}")
-        
-        return df_final
-
-    except Exception as e:
-        add_to_log(f"Erro no processamento: {str(e)}\n{traceback.format_exc()}", 'error')
-        return None
+def salvar_base_funcionarios(df):
+    """Salva a base de funcionários em um arquivo"""
+    df.to_pickle("base_funcionarios.pkl")
+    logging.info(f"Base de funcionários salva com sucesso. Total de registros: {len(df)}")
 
 def main():
-    st.title("Processador de Prêmio Assiduidade")
+    # Configuração da página
+    st.set_page_config(
+        page_title="Sistema de Verificação de Prêmios",
+        page_icon="🏆",
+        layout="wide"
+    )
     
-    base_file = st.file_uploader("Arquivo Base", type=['xlsx'], key='base')
-    absence_file = st.file_uploader("Arquivo de Ausências", type=['xlsx'], key='ausencia')
-    model_file = st.file_uploader("Modelo de Exportação", type=['xlsx'], key='modelo')
-
-    log_area = st.expander("Logs de Processamento")
-
-    if base_file and absence_file and model_file:
-        if st.button("Processar Dados"):
-            log_messages.clear()
-            
-            add_to_log("Iniciando processamento de dados")
-            
-            df_resultado = process_data(base_file, absence_file, model_file)
-            
-            if df_resultado is not None:
-                st.success("Dados processados com sucesso!")
+    # Título principal
+    st.title("Sistema de Verificação de Prêmios")
+    
+    # Sidebar para gerenciamento da base de funcionários
+    with st.sidebar:
+        st.header("Base de Funcionários")
+        
+        # Upload de nova base
+        uploaded_file = st.file_uploader(
+            "Atualizar base de funcionários",
+            type=['xlsx'],
+            help="Selecione o arquivo 'EQUIPPE Base Funcionarios.xlsx'"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Lendo o arquivo Excel
+                df_funcionarios = pd.read_excel(uploaded_file)
+                logging.info(f"Arquivo carregado: {uploaded_file.name}")
                 
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df_resultado.to_excel(writer, index=False, sheet_name='Resultado')
-                output.seek(0)
-
-                st.download_button("Baixar Relatório", 
-                                 data=output, 
-                                 file_name="resultado_assiduidade.xlsx")
+                # Formatando as colunas para garantir consistência
+                df_funcionarios.columns = [
+                    "Matricula", "Nome_Funcionario", "Cargo", 
+                    "Codigo_Local", "Nome_Local", "Qtd_Horas_Mensais",
+                    "Tipo_Contrato", "Data_Termino_Contrato", 
+                    "Dias_Experiencia", "Salario_Mes_Atual"
+                ]
                 
-                with log_area:
-                    for log in log_messages:
-                        st.text(log)
+                # Verificar estrutura dos dados
+                sucesso, mensagens = verificar_estrutura_dados(df_funcionarios)
                 
-                log_file = generate_log_file()
-                st.download_button("Baixar Log Detalhado", 
-                                 data=log_file, 
-                                 file_name="log_processamento.txt", 
-                                 key="download_log")
-            else:
-                st.error("Falha no processamento. Verifique os logs.")
+                # Exibir resultados da verificação
+                with st.expander("Log de Validação", expanded=True):
+                    for msg in mensagens:
+                        if sucesso:
+                            st.success(msg)
+                            logging.info(msg)
+                        else:
+                            st.error(msg)
+                            logging.error(msg)
                 
-                with log_area:
-                    for log in log_messages:
-                        st.text(log)
-                
-                log_file = generate_log_file()
-                st.download_button("Baixar Log de Erro", 
-                                 data=log_file, 
-                                 file_name="log_erro.txt", 
-                                 key="download_error_log")
+                if sucesso:
+                    # Salvando a base atualizada
+                    salvar_base_funcionarios(df_funcionarios)
+                    st.success("Base de funcionários atualizada com sucesso!")
+                    
+                    # Mostrando data da última atualização
+                    st.info(f"Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+                    
+                    # Estatísticas do carregamento
+                    st.write("Estatísticas do carregamento:")
+                    st.write(f"- Total de registros: {len(df_funcionarios)}")
+                    st.write(f"- Total de colunas: {len(df_funcionarios.columns)}")
+                    
+            except Exception as e:
+                erro = f"Erro ao processar o arquivo: {str(e)}"
+                st.error(erro)
+                logging.error(erro)
+    
+    # Área principal
+    # Carregando a base de funcionários
+    df_funcionarios = carregar_base_funcionarios()
+    
+    if df_funcionarios is not None:
+        st.subheader("Base de Funcionários Atual")
+        
+        # Filtros
+        col1, col2 = st.columns(2)
+        with col1:
+            filtro_local = st.multiselect(
+                "Filtrar por Local",
+                options=sorted(df_funcionarios['Nome_Local'].unique())
+            )
+        
+        with col2:
+            filtro_cargo = st.multiselect(
+                "Filtrar por Cargo",
+                options=sorted(df_funcionarios['Cargo'].unique())
+            )
+        
+        # Aplicando filtros
+        df_filtrado = df_funcionarios.copy()
+        if filtro_local:
+            df_filtrado = df_filtrado[df_filtrado['Nome_Local'].isin(filtro_local)]
+        if filtro_cargo:
+            df_filtrado = df_filtrado[df_filtrado['Cargo'].isin(filtro_cargo)]
+        
+        # Mostrando estatísticas básicas
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total de Funcionários", len(df_filtrado))
+        with col2:
+            st.metric("Total de Locais", df_filtrado['Nome_Local'].nunique())
+        with col3:
+            st.metric("Total de Cargos", df_filtrado['Cargo'].nunique())
+        
+        # Mostrando os dados
+        st.dataframe(
+            df_filtrado,
+            column_config={
+                "Salario_Mes_Atual": st.column_config.NumberColumn(
+                    "Salário",
+                    format="R$ %.2f"
+                ),
+                "Data_Termino_Contrato": st.column_config.DateColumn(
+                    "Data Término Contrato",
+                    format="DD/MM/YYYY"
+                )
+            }
+        )
+        
+    else:
+        st.warning("Por favor, faça o upload da base de funcionários para começar.")
 
 if __name__ == "__main__":
     main()
