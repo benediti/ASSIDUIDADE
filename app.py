@@ -123,6 +123,11 @@ def verificar_estrutura_dados_ausencias(df):
 
 def processar_ausencias(df):
     """Processa e agrupa as ausências por matrícula"""
+    # Converter matrícula para inteiro
+    df['Matricula'] = pd.to_numeric(df['Matricula'], errors='coerce')
+    df = df.dropna(subset=['Matricula'])
+    df['Matricula'] = df['Matricula'].astype(int)
+    
     # Converter 'x' para 1 na coluna Falta
     df['Falta'] = df['Falta'].fillna('')
     df['Falta'] = df['Falta'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
