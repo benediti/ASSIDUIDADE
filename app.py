@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
+import io
 import logging
 
 # Configuração do logging
@@ -11,14 +12,19 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Tabela de tipos de afastamento
-TIPOS_AFASTAMENTO = {
-    'Abonado Gerencia Loja': 'Abonado',
-    'Atraso': 'Atraso',
-    'Falta': 'Falta',
-    'Licença Médica': 'Licença',
-    'Férias': 'Férias'
-}
+def carregar_tipos_afastamento():
+    if os.path.exists("tipos_afastamento.pkl"):
+        return pd.read_pickle("tipos_afastamento.pkl")
+    return pd.DataFrame({"tipo": [], "categoria": []})
+
+def salvar_tipos_afastamento(df):
+    df.to_pickle("tipos_afastamento.pkl")
+
+def contar_faltas(valor):
+    """Conta faltas: X = 1, vazio ou outros = 0"""
+    if isinstance(valor, str) and valor.strip().upper() == 'X':
+        return 1
+    return 0
 
 def verificar_estrutura_dados_funcionarios(df):
     """Verifica estrutura da base de funcionários"""
@@ -40,7 +46,6 @@ def verificar_estrutura_dados_funcionarios(df):
     info = []
     erros = []
     
-    # Verificar colunas presentes
     for coluna in colunas_esperadas.keys():
         if coluna not in df.columns:
             erros.append(f"Coluna ausente: {coluna}")
@@ -48,10 +53,8 @@ def verificar_estrutura_dados_funcionarios(df):
     if erros:
         return False, erros
     
-    # Verificar tipos de dados e valores nulos
     for coluna, tipo in colunas_esperadas.items():
         try:
-            # Verificar valores nulos
             nulos = df[coluna].isnull().sum()
             if nulos > 0:
                 if coluna in colunas_permitir_nulos:
@@ -59,7 +62,6 @@ def verificar_estrutura_dados_funcionarios(df):
                 else:
                     erros.append(f"Coluna {coluna} contém {nulos} valores nulos")
             
-            # Verificar tipos de dados
             if tipo == "numeric":
                 if coluna in colunas_permitir_nulos:
                     df[coluna] = pd.to_numeric(df[coluna], errors='coerce')
@@ -72,7 +74,6 @@ def verificar_estrutura_dados_funcionarios(df):
                     df[coluna] = pd.to_datetime(df[coluna], errors='raise')
             elif tipo == "string":
                 df[coluna] = df[coluna].astype(str)
-        
         except Exception as e:
             erros.append(f"Erro na coluna {coluna}: {str(e)}")
     
@@ -95,23 +96,18 @@ def verificar_estrutura_dados_ausencias(df):
     info = []
     erros = []
     
-    # Verificar colunas presentes
     for coluna in colunas_esperadas.keys():
         if coluna not in df.columns:
             erros.append(f"Coluna ausente: {coluna}")
     
     if not erros:
         try:
-            # Remover linhas com matrícula vazia
             df = df[df['Matricula'].notna() & (df['Matricula'].astype(str).str.strip() != '')]
-            
-            # Converter tipos de dados
             df['Matricula'] = df['Matricula'].astype(int)
             df['Centro_de_Custo'] = pd.to_numeric(df['Centro_de_Custo'], errors='coerce')
             df['Dia'] = pd.to_datetime(df['Dia'], errors='coerce')
             df['Data_de_Demissao'] = pd.to_datetime(df['Data_de_Demissao'], errors='coerce')
             
-            # Tratamento especial para a coluna Falta
             df['Falta'] = df['Falta'].fillna('')
             df['Falta'] = df['Falta'].apply(lambda x: 1 if x.lower() == 'x' else 0)
             
@@ -121,12 +117,6 @@ def verificar_estrutura_dados_ausencias(df):
             erros.append(f"Erro ao processar dados: {str(e)}")
     
     return len(erros) == 0, info + erros
-
-def contar_faltas(valor):
-    """Conta faltas: X = 1, vazio ou outros = 0"""
-    if isinstance(valor, str) and valor.strip().upper() == 'X':
-        return 1
-    return 0
 
 def processar_ausencias(df):
     # Converter matrícula para inteiro
@@ -154,7 +144,7 @@ def processar_ausencias(df):
     # Preparar dados de afastamento
     df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
     
-    # Criar resultado base com informações de Falta e Atraso
+    # Criar resultado base
     resultado = df.groupby('Matricula').agg({
         'Faltas': 'sum',
         'Horas_Atraso': 'sum'
@@ -181,27 +171,111 @@ def processar_ausencias(df):
     
     return resultado
 
-def carregar_tipos_afastamento():
-    """Carrega tipos de afastamento do arquivo"""
-    if os.path.exists("tipos_afastamento.pkl"):
-        return pd.read_pickle("tipos_afastamento.pkl")
-    return pd.DataFrame({"tipo": list(TIPOS_AFASTAMENTO.keys()), 
-                        "categoria": list(TIPOS_AFASTAMENTO.values())})
-
-def salvar_tipos_afastamento(df):
-    """Salva tipos de afastamento em arquivo"""
-    df.to_pickle("tipos_afastamento.pkl")
+def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
+    """Calcula prêmio baseado nas regras definidas"""
+    
+    # Tipos de afastamento que impedem o prêmio
+    afastamentos_impeditivos = [
+        "Declaração Acompanhante", "Feriado", "Emenda Feriado", 
+        "Licença Maternidade", "Declaração INSS (dias)", 
+        "Comparecimento Medico INSS", "Aposentado por Invalidez",
+        "Atestado Médico", "Atestado de Óbito", "Licença Paternidade",
+        "Licença Casamento", "Acidente de Trabalho", "Auxilio Doença",
+        "Primeira Suspensão", "Segunda Suspensão", "Férias",
+        "Falta não justificada", "Processo",
+        "Falta não justificada (dias)", "Atestado Médico (dias)"
+    ]
+    
+    # Afastamentos que precisam de decisão
+    afastamentos_decisao = ["Abono", "Atraso"]
+    
+    # Afastamentos permitidos (feriados)
+    afastamentos_permitidos = [
+        "Folga Gestor", "Abonado Gerencia Loja",
+        "Confraternização universal", "Aniversario de São Paulo"
+    ]
+    
+    # Filtrar funcionários pela data de admissão
+    df_funcionarios = df_funcionarios[
+        pd.to_datetime(df_funcionarios['Data_Admissao']) <= pd.to_datetime(data_limite_admissao)
+    ]
+    
+    # Preparar resultado
+    resultados = []
+    
+    for _, func in df_funcionarios.iterrows():
+        # Buscar ausências do funcionário
+        ausencias = df_ausencias[df_ausencias['Matricula'] == func['Matricula']]
+        
+        # Verificar afastamentos
+        tem_afastamento_impeditivo = False
+        tem_afastamento_decisao = False
+        tem_apenas_permitidos = False
+        
+        if not ausencias.empty:
+            afastamentos = ' '.join(ausencias['Afastamentos'].dropna()).lower()
+            
+            # Verificar afastamentos impeditivos
+            for afastamento in afastamentos_impeditivos:
+                if afastamento.lower() in afastamentos:
+                    tem_afastamento_impeditivo = True
+                    break
+            
+            # Verificar afastamentos que precisam de decisão
+            if not tem_afastamento_impeditivo:
+                for afastamento in afastamentos_decisao:
+                    if afastamento.lower() in afastamentos:
+                        tem_afastamento_decisao = True
+                        break
+            
+            # Verificar se tem apenas afastamentos permitidos
+            tem_apenas_permitidos = not tem_afastamento_impeditivo and not tem_afastamento_decisao
+            
+        # Calcular valor do prêmio
+        valor_premio = 0
+        if func['Qtd_Horas_Mensais'] == 220:
+            valor_premio = 300.00
+        elif func['Qtd_Horas_Mensais'] <= 110:
+            valor_premio = 150.00
+        
+        # Determinar status
+        status = "Não tem direito"
+        if not tem_afastamento_impeditivo:
+            if tem_afastamento_decisao:
+                status = "Aguardando decisão"
+            elif tem_apenas_permitidos or ausencias.empty:
+                status = "Tem direito"
+        
+        # Adicionar ao resultado
+        resultados.append({
+            'Matricula': func['Matricula'],
+            'Nome': func['Nome_Funcionario'],
+            'Cargo': func['Cargo'],
+            'Local': func['Nome_Local'],
+            'Horas_Mensais': func['Qtd_Horas_Mensais'],
+            'Data_Admissao': func['Data_Admissao'],
+            'Valor_Premio': valor_premio if status == "Tem direito" else 0,
+            'Status': status,
+            'Tem_Afastamento_Impeditivo': tem_afastamento_impeditivo,
+            'Precisa_Decisao': tem_afastamento_decisao,
+            'Apenas_Permitidos': tem_apenas_permitidos
+        })
+    
+    return pd.DataFrame(resultados)
 
 def main():
     st.set_page_config(page_title="Sistema de Verificação de Prêmios", page_icon="🏆", layout="wide")
     st.title("Sistema de Verificação de Prêmios")
     
-    # Carregar tipos de afastamento
-    df_tipos = carregar_tipos_afastamento()
-    
     # Sidebar para configurações e uploads
     with st.sidebar:
         st.header("Configurações")
+        
+        # Data limite de admissão
+        data_limite = st.date_input(
+            "Data Limite de Admissão",
+            help="Funcionários admitidos após esta data não terão direito ao prêmio"
+        )
         
         # Upload da base de funcionários
         st.subheader("Base de Funcionários")
@@ -211,7 +285,7 @@ def main():
         st.subheader("Base de Ausências")
         uploaded_ausencias = st.file_uploader("Carregar base de ausências", type=['xlsx'])
         
-        # Gerenciamento de tipos de afastamento
+        # Upload dos tipos de afastamento
         st.subheader("Tipos de Afastamento")
         uploaded_tipos = st.file_uploader("Atualizar tipos de afastamento", type=['xlsx'])
         
@@ -226,15 +300,11 @@ def main():
                     st.error("Arquivo deve conter colunas 'Nome' e 'Categoria'")
             except Exception as e:
                 st.error(f"Erro ao processar arquivo: {str(e)}")
-        
-        # Mostrar tipos atuais
-        st.write("Tipos de Afastamento Atuais:")
-        st.dataframe(df_tipos)
-    
-    # Processamento da base de funcionários
-    df_funcionarios = None
-    if uploaded_func is not None:
+
+    # Processamento das bases
+    if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
         try:
+            # Carregar e processar base de funcionários
             df_funcionarios = pd.read_excel(uploaded_func)
             df_funcionarios.columns = [
                 "Matricula", "Nome_Funcionario", "Cargo", 
@@ -242,91 +312,15 @@ def main():
                 "Tipo_Contrato", "Data_Termino_Contrato", 
                 "Dias_Experiencia", "Salario_Mes_Atual", "Data_Admissao"
             ]
-            df_funcionarios['Matricula'] = df_funcionarios['Matricula'].astype(int)
             
-            sucesso, mensagens = verificar_estrutura_dados_funcionarios(df_funcionarios)
-            
+            sucesso_func, msg_func = verificar_estrutura_dados_funcionarios(df_funcionarios)
             with st.expander("Log Base Funcionários", expanded=True):
-                for msg in mensagens:
+                for msg in msg_func:
                     if msg.startswith("Informação:"):
                         st.info(msg)
-                    elif sucesso:
+                    elif sucesso_func:
                         st.success(msg)
                     else:
                         st.error(msg)
-        except Exception as e:
-            st.error(f"Erro ao processar base de funcionários: {str(e)}")
-    
-    # Processamento da base de ausências
-    if uploaded_ausencias is not None:
-        try:
-            df_ausencias = pd.read_excel(uploaded_ausencias)
-            # Renomear colunas removendo espaços e caracteres especiais
-            df_ausencias = pd.read_excel(uploaded_ausencias)
-            # Corrigindo a ordem das colunas
-            df_ausencias = df_ausencias.rename(columns={
-                df_ausencias.columns[0]: "Nome",
-                df_ausencias.columns[1]: "Matricula",
-                df_ausencias.columns[2]: "Centro_de_Custo",
-                df_ausencias.columns[3]: "Dia",
-                df_ausencias.columns[4]: "Ausencia_Integral",
-                df_ausencias.columns[5]: "Ausencia_Parcial",
-                df_ausencias.columns[6]: "Afastamentos",
-                df_ausencias.columns[7]: "Falta",
-                df_ausencias.columns[8]: "Data_de_Demissao"
-            })
-            
-            sucesso, mensagens = verificar_estrutura_dados_ausencias(df_ausencias)
-            
-            with st.expander("Log Base Ausências", expanded=True):
-                for msg in mensagens:
-                    if msg.startswith("Informação:"):
-                        st.info(msg)
-                    elif sucesso:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
-            
-            if sucesso:
-                # Processar ausências
-                df_resumo = processar_ausencias(df_ausencias)
-                
-                st.subheader("Resumo de Ausências")
-                # Filtros
-                col1, col2 = st.columns(2)
-                with col1:
-                    filtro_matricula = st.multiselect(
-                        "Filtrar por Matrícula",
-                        options=sorted(df_resumo['Matricula'].unique())
-                    )
-                
-                # Aplicar filtros
-                df_mostrar = df_resumo
-                if filtro_matricula:
-                    df_mostrar = df_mostrar[df_mostrar['Matricula'].isin(filtro_matricula)]
-                
-                # Mostrar dados
-                st.dataframe(
-                    df_mostrar,
-                    column_config={
-                        "Matricula": st.column_config.NumberColumn("Matrícula", format="%d"),
-                        "Faltas": st.column_config.NumberColumn("Faltas", format="%d"),
-                        "Atrasos": st.column_config.TextColumn("Atrasos (HH:MM)")
-                    }
-                )
-                
-                # Estatísticas
-                st.subheader("Estatísticas")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total de Funcionários", len(df_mostrar))
-                with col2:
-                    st.metric("Total de Faltas", df_mostrar['Total_Faltas'].sum())
-                with col3:
-                    st.metric("Média de Faltas", f"{df_mostrar['Total_Faltas'].mean():.2f}")
-        
-        except Exception as e:
-            st.error(f"Erro ao processar arquivo de ausências: {str(e)}")
-
-if __name__ == "__main__":
-    main()
+                        
+            # Carregar e processar base de ausências
