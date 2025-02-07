@@ -320,22 +320,135 @@ def main():
                     
                     # Criar PDF
                     buffer = BytesIO()
-                    doc = SimpleDocTemplate(buffer, pagesize=A4)
+                    doc = SimpleDocTemplate(
+                        buffer,
+                        pagesize=A4,
+                        rightMargin=30,
+                        leftMargin=30,
+                        topMargin=30,
+                        bottomMargin=30
+                    )
                     story = []
                     styles = getSampleStyleSheet()
                     
-                    # Título
-                    title_style = ParagraphStyle(
+                    # Estilos personalizados
+                    styles.add(ParagraphStyle(
                         'CustomTitle',
                         parent=styles['Heading1'],
                         fontSize=24,
                         spaceAfter=30,
-                        alignment=1
-                    )
-                    story.append(Paragraph("RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", title_style))
-                    story.append(Paragraph(f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}", 
-                                        styles["Normal"]))
+                        alignment=1,
+                        textColor=colors.HexColor('#1f77b4')
+                    ))
+                    
+                    styles.add(ParagraphStyle(
+                        'SectionHeader',
+                        parent=styles['Heading2'],
+                        fontSize=16,
+                        spaceBefore=15,
+                        spaceAfter=10,
+                        textColor=colors.HexColor('#2c3e50')
+                    ))
+                    
+                    # Título e data
+                    story.append(Paragraph("RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", styles['CustomTitle']))
+                    story.append(Paragraph(
+                        f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}",
+                        ParagraphStyle(
+                            'Date',
+                            parent=styles['Normal'],
+                            alignment=2,
+                            fontSize=12,
+                            textColor=colors.grey
+                        )
+                    ))
                     story.append(Spacer(1, 20))
+                    
+                    # Resumo geral
+                    resumo_data = [
+                        ['RESUMO GERAL'],
+                        [f'Total Analisados: {len(df_mostrar):,}'],
+                        [f'Com Direito: {len(df_mostrar[df_mostrar["Status"] == "Tem direito"]):,}'],
+                        [f'Aguardando Decisão: {len(df_mostrar[df_mostrar["Status"].str.contains("Aguardando decisão", na=False)]):,}'],
+                        [f'Valor Total: R$ {df_mostrar["Valor_Premio"].sum():,.2f}']
+                    ]
+                    
+                    t = Table(resumo_data, colWidths=[480])
+                    t.setStyle(TableStyle([
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 14),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
+                        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 12),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                        ('ROWHEIGHT', (0, 0), (-1, -1), 30),
+                    ]))
+                    story.append(t)
+                    story.append(Spacer(1, 30))
+                    
+                    # Detalhamento por status
+                    for status in sorted(df_mostrar['Status'].unique()):
+                        df_status = df_mostrar[df_mostrar['Status'] == status]
+                        
+                        story.append(Paragraph(f'Status: {status}', styles['SectionHeader']))
+                        
+                        info_data = [
+                            [f'Quantidade de Funcionários: {len(df_status):,}'],
+                            [f'Valor Total: R$ {df_status["Valor_Premio"].sum():,.2f}'],
+                            ['Locais Afetados:'],
+                            [', '.join(sorted(df_status['Local'].unique()))]
+                        ]
+                        
+                        t = Table(info_data, colWidths=[480])
+                        t.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                            ('FONTSIZE', (0, 0), (-1, -1), 10),
+                            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                            ('ROWHEIGHT', (0, 0), (-1, -1), 25),
+                        ]))
+                        story.append(t)
+                        story.append(Spacer(1, 10))
+                        
+                        if len(df_status) > 0:
+                            data = [['Matrícula', 'Nome', 'Cargo', 'Local', 'Valor Prêmio']]
+                            for _, row in df_status.iterrows():
+                                data.append([
+                                    str(int(row['Matricula'])),
+                                    row['Nome'],
+                                    row['Cargo'],
+                                    row['Local'],
+                                    f'R$ {row["Valor_Premio"]:,.2f}'
+                                ])
+                            
+                            col_widths = [60, 140, 100, 120, 60]
+                            t = Table(data, colWidths=col_widths)
+                            t.setStyle(TableStyle([
+                                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                                ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),
+                                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                                ('ROWHEIGHT', (0, 0), (-1, -1), 20),
+                            ]))
+                            story.append(t)
+                        
+                        story.append(PageBreak())
+                    
+                    doc.build(story)
                     
                     # Resumo Geral
                     data = [
