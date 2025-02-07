@@ -32,7 +32,8 @@ def verificar_estrutura_dados_funcionarios(df):
         "Tipo_Contrato": "string",
         "Data_Termino_Contrato": "datetime",
         "Dias_Experiencia": "numeric",
-        "Salario_Mes_Atual": "numeric"
+        "Salario_Mes_Atual": "numeric",
+        "Data_Admissao": "datetime"
     }
     
     colunas_permitir_nulos = ["Data_Termino_Contrato", "Dias_Experiencia"]
@@ -239,7 +240,7 @@ def main():
                 "Matricula", "Nome_Funcionario", "Cargo", 
                 "Codigo_Local", "Nome_Local", "Qtd_Horas_Mensais",
                 "Tipo_Contrato", "Data_Termino_Contrato", 
-                "Dias_Experiencia", "Salario_Mes_Atual"
+                "Dias_Experiencia", "Salario_Mes_Atual", "Data_Admissao"
             ]
             df_funcionarios['Matricula'] = df_funcionarios['Matricula'].astype(int)
             
