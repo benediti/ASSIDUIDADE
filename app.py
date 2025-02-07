@@ -101,6 +101,9 @@ def verificar_estrutura_dados_ausencias(df):
     
     if not erros:
         try:
+            # Remover linhas com matrícula vazia
+            df = df[df['Matricula'].notna() & (df['Matricula'].astype(str).str.strip() != '')]
+            
             # Converter tipos de dados
             df['Matricula'] = df['Matricula'].astype(int)
             df['Centro_de_Custo'] = pd.to_numeric(df['Centro_de_Custo'], errors='coerce')
