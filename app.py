@@ -322,5 +322,73 @@ def main():
                         st.success(msg)
                     else:
                         st.error(msg)
-                        
+            
             # Carregar e processar base de ausências
+            df_ausencias = pd.read_excel(uploaded_ausencias)
+            df_ausencias = processar_ausencias(df_ausencias)
+            
+            # Calcular prêmios
+            df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
+            
+            # Exibir resultados
+            st.subheader("Resultado do Cálculo de Prêmios")
+            
+            # Filtros
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                filtro_status = st.multiselect(
+                    "Filtrar por Status",
+                    options=sorted(df_resultado['Status'].unique())
+                )
+            
+            with col2:
+                filtro_local = st.multiselect(
+                    "Filtrar por Local",
+                    options=sorted(df_resultado['Local'].unique())
+                )
+            
+            # Aplicar filtros
+            df_mostrar = df_resultado
+            if filtro_status:
+                df_mostrar = df_mostrar[df_mostrar['Status'].isin(filtro_status)]
+            if filtro_local:
+                df_mostrar = df_mostrar[df_mostrar['Local'].isin(filtro_local)]
+            
+            # Mostrar dados
+            st.dataframe(
+                df_mostrar,
+                column_config={
+                    "Matricula": st.column_config.NumberColumn("Matrícula", format="%d"),
+                    "Valor_Premio": st.column_config.NumberColumn("Valor Prêmio", format="R$ %.2f"),
+                    "Data_Admissao": st.column_config.DateColumn("Data Admissão", format="DD/MM/YYYY")
+                }
+            )
+            
+            # Estatísticas
+            st.subheader("Estatísticas")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total de Funcionários", len(df_mostrar))
+            with col2:
+                st.metric("Total com Direito", len(df_mostrar[df_mostrar['Status'] == "Tem direito"]))
+            with col3:
+                st.metric("Valor Total Prêmios", f"R$ {df_mostrar['Valor_Premio'].sum():.2f}")
+            
+            # Botão para exportar
+            if st.button("Exportar Resultados"):
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_mostrar.to_excel(writer, index=False, sheet_name='Resultados')
+                
+                st.download_button(
+                    label="Download Excel",
+                    data=output.getvalue(),
+                    file_name="resultado_premios.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        
+        except Exception as e:
+            st.error(f"Erro ao processar dados: {str(e)}")
+
+if __name__ == "__main__":
+    main()
