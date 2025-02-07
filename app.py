@@ -203,12 +203,12 @@ def main():
         if uploaded_tipos is not None:
             try:
                 df_tipos_novo = pd.read_excel(uploaded_tipos)
-                if 'tipo' in df_tipos_novo.columns and 'categoria' in df_tipos_novo.columns:
-                    df_tipos = df_tipos_novo
+                if 'Nome' in df_tipos_novo.columns and 'Categoria' in df_tipos_novo.columns:
+                    df_tipos = df_tipos_novo.rename(columns={'Nome': 'tipo', 'Categoria': 'categoria'})
                     salvar_tipos_afastamento(df_tipos)
                     st.success("Tipos de afastamento atualizados!")
                 else:
-                    st.error("Arquivo deve conter colunas 'tipo' e 'categoria'")
+                    st.error("Arquivo deve conter colunas 'Nome' e 'Categoria'")
             except Exception as e:
                 st.error(f"Erro ao processar arquivo: {str(e)}")
         
