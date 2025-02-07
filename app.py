@@ -237,15 +237,62 @@ def main():
             if filtro_local:
                 df_mostrar = df_mostrar[df_mostrar['Local'].isin(filtro_local)]
             
-            # Mostrar dados
-            st.dataframe(
-                df_mostrar,
-                column_config={
-                    "Matricula": st.column_config.NumberColumn("Matrícula", format="%d"),
-                    "Valor_Premio": st.column_config.NumberColumn("Valor Prêmio", format="R$ %.2f"),
-                    "Data_Admissao": st.column_config.DateColumn("Data Admissão", format="DD/MM/YYYY")
-                }
-            )
+            # Mostrar relatório formatado na interface
+            st.markdown("---")
+            st.subheader("Relatório Executivo", divider="rainbow")
+            
+            # Cabeçalho do relatório
+            st.markdown(f"""
+            ### RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA
+            **Data do relatório:** {datetime.now().strftime('%d/%m/%Y')}
+            """)
+            
+            # Resumo geral em cards
+            st.markdown("### RESUMO GERAL")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown(f"""
+                🎯 **Total Analisados**
+                ### {len(df_mostrar):,}
+                """)
+            with col2:
+                st.markdown(f"""
+                ✅ **Com Direito**
+                ### {len(df_mostrar[df_mostrar['Status'] == 'Tem direito']):,}
+                """)
+            with col3:
+                st.markdown(f"""
+                ⏳ **Aguardando Decisão**
+                ### {len(df_mostrar[df_mostrar['Status'].str.contains('Aguardando decisão', na=False)]):,}
+                """)
+            with col4:
+                st.markdown(f"""
+                💰 **Valor Total**
+                ### R$ {df_mostrar['Valor_Premio'].sum():,.2f}
+                """)
+            
+            # Detalhamento por status
+            st.markdown("### DETALHAMENTO POR STATUS")
+            for status in sorted(df_mostrar['Status'].unique()):
+                df_status = df_mostrar[df_mostrar['Status'] == status]
+                with st.expander(f"Status: {status}", expanded=True):
+                    st.markdown(f"""
+                    **Quantidade de Funcionários:** {len(df_status):,}  
+                    **Valor Total:** R$ {df_status['Valor_Premio'].sum():,.2f}
+                    
+                    **Locais Afetados:**  
+                    {', '.join(sorted(df_status['Local'].unique()))}
+                    """)
+                    
+                    if len(df_status) > 0:
+                        st.dataframe(
+                            df_status[['Matricula', 'Nome', 'Cargo', 'Local', 'Valor_Premio']],
+                            column_config={
+                                "Matricula": st.column_config.NumberColumn("Matrícula", format="%d"),
+                                "Valor_Premio": st.column_config.NumberColumn("Valor Prêmio", format="R$ %.2f")
+                            },
+                            hide_index=True
+                        )
             
             # Estatísticas
             st.subheader("Estatísticas")
