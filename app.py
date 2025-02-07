@@ -121,16 +121,20 @@ def verificar_estrutura_dados_ausencias(df):
     
     return len(erros) == 0, info + erros
 
+def contar_faltas(valor):
+    """Conta faltas: X = 1, vazio ou outros = 0"""
+    if isinstance(valor, str) and valor.strip().upper() == 'X':
+        return 1
+    return 0
+
 def processar_ausencias(df):
-    """Processa e agrupa as ausências por matrícula"""
     # Converter matrícula para inteiro
     df['Matricula'] = pd.to_numeric(df['Matricula'], errors='coerce')
     df = df.dropna(subset=['Matricula'])
     df['Matricula'] = df['Matricula'].astype(int)
     
-    # Converter 'x' para 1 na coluna Falta
-    df['Falta'] = df['Falta'].fillna('')
-    df['Falta'] = df['Falta'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
+    # Processar faltas: X = 1, vazio = 0
+    df['Faltas'] = df['Falta'].apply(contar_faltas)
     
     # Processar Ausência Parcial (atrasos)
     def converter_para_horas(tempo):
@@ -151,34 +155,28 @@ def processar_ausencias(df):
     
     # Criar resultado base com informações de Falta e Atraso
     resultado = df.groupby('Matricula').agg({
-        'Falta': 'sum',
+        'Faltas': 'sum',
         'Horas_Atraso': 'sum'
     }).reset_index()
     
     # Formatar horas de atraso
-    resultado['Horas_Atraso'] = resultado['Horas_Atraso'].apply(
+    resultado['Atrasos'] = resultado['Horas_Atraso'].apply(
         lambda x: f"{int(x)}:{int((x % 1) * 60):02d}" if x > 0 else ""
     )
+    
+    # Remover coluna temporária
+    resultado = resultado.drop('Horas_Atraso', axis=1)
     
     # Processar cada tipo de afastamento
     df_tipos = carregar_tipos_afastamento()
     tipos_unicos = df_tipos['tipo'].unique()
     
     for tipo in tipos_unicos:
-        # Contar ocorrências de cada tipo
         df[f'count_{tipo}'] = df['Afastamentos'].str.contains(tipo, case=False).astype(int)
         contagem = df.groupby('Matricula')[f'count_{tipo}'].sum().reset_index()
-        
-        # Adicionar ao resultado
         resultado = resultado.merge(contagem, on='Matricula', how='left')
         resultado = resultado.rename(columns={f'count_{tipo}': tipo})
         resultado[tipo] = resultado[tipo].apply(lambda x: x if x > 0 else "")
-    
-    # Renomear colunas
-    resultado = resultado.rename(columns={
-        'Falta': 'Faltas',
-        'Horas_Atraso': 'Atrasos'
-    })
     
     return resultado
 
