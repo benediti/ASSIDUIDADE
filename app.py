@@ -194,11 +194,19 @@ def main():
         try:
             df_ausencias = pd.read_excel(uploaded_ausencias)
             # Renomear colunas removendo espaços e caracteres especiais
-            df_ausencias.columns = [
-                "Matricula", "Nome", "Centro_de_Custo", "Dia",
-                "Ausencia_Integral", "Ausencia_Parcial", "Afastamentos",
-                "Falta", "Data_de_Demissao"
-            ]
+            df_ausencias = pd.read_excel(uploaded_ausencias)
+            # Corrigindo a ordem das colunas
+            df_ausencias = df_ausencias.rename(columns={
+                df_ausencias.columns[0]: "Nome",
+                df_ausencias.columns[1]: "Matricula",
+                df_ausencias.columns[2]: "Centro_de_Custo",
+                df_ausencias.columns[3]: "Dia",
+                df_ausencias.columns[4]: "Ausencia_Integral",
+                df_ausencias.columns[5]: "Ausencia_Parcial",
+                df_ausencias.columns[6]: "Afastamentos",
+                df_ausencias.columns[7]: "Falta",
+                df_ausencias.columns[8]: "Data_de_Demissao"
+            })
             
             sucesso, mensagens = verificar_estrutura_dados_ausencias(df_ausencias)
             
