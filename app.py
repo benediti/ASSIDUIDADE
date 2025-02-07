@@ -1,4 +1,15 @@
-import streamlit as st
+# Carregar e processar base de funcionários
+            df_funcionarios = pd.read_excel(uploaded_func)
+            df_funcionarios.columns = [
+                "Matricula", "Nome_Funcionario", "Cargo", 
+                "Codigo_Local", "Nome_Local", "Qtd_Horas_Mensais",
+                "Tipo_Contrato", "Data_Termino_Contrato", 
+                "Dias_Experiencia", "Salario_Mes_Atual", "Data_Admissao"
+            ]
+            
+            # Converter datas com formato brasileiro
+            df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], format='%d/%m/%Y')
+            df_funcionarios['Data_Termino_Contrato'] = pd.to_datetime(df_funcionarios['Data_Termino_Contrato'], format='%d/%m/%Y', errors='coerce')import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
@@ -274,7 +285,8 @@ def main():
         # Data limite de admissão
         data_limite = st.date_input(
             "Data Limite de Admissão",
-            help="Funcionários admitidos após esta data não terão direito ao prêmio"
+            help="Funcionários admitidos após esta data não terão direito ao prêmio",
+            format="DD/MM/YYYY"
         )
         
         # Upload da base de funcionários
