@@ -137,9 +137,13 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         
         # Determinar status
         status = "Não tem direito"
+        total_atrasos = ""
+        
         if not tem_afastamento_impeditivo:
             if tem_afastamento_decisao:
                 status = "Aguardando decisão"
+                if not ausencias.empty and 'Atrasos' in ausencias.columns:
+                    total_atrasos = ausencias['Atrasos'].iloc[0]
             elif tem_apenas_permitidos or ausencias.empty:
                 status = "Tem direito"
         
@@ -152,7 +156,7 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
             'Horas_Mensais': func['Qtd_Horas_Mensais'],
             'Data_Admissao': func['Data_Admissao'],
             'Valor_Premio': valor_premio if status == "Tem direito" else 0,
-            'Status': status,
+            'Status': f"{status} (Total Atrasos: {total_atrasos})" if status == "Aguardando decisão" and total_atrasos else status,
             'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else ''
         })
     
