@@ -137,7 +137,6 @@ def processar_ausencias(df):
         if pd.isna(tempo) or tempo == '':
             return 0
         try:
-            # Verifica se é no formato HH:MM
             if ':' in str(tempo):
                 horas, minutos = map(int, str(tempo).split(':'))
                 return horas + minutos/60
@@ -147,22 +146,39 @@ def processar_ausencias(df):
     
     df['Horas_Atraso'] = df['Ausencia_Parcial'].apply(converter_para_horas)
     
-    # Garantir que Afastamentos seja string
+    # Preparar dados de afastamento
     df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
     
-    # Agrupar por matrícula
+    # Criar resultado base com informações de Falta e Atraso
     resultado = df.groupby('Matricula').agg({
         'Falta': 'sum',
-        'Dia': 'count',
-        'Horas_Atraso': 'sum',
-        'Afastamentos': lambda x: '; '.join(filter(None, [str(i).strip() for i in x if str(i).strip()]))
+        'Horas_Atraso': 'sum'
     }).reset_index()
     
     # Formatar horas de atraso
-    resultado['Horas_Atraso'] = resultado['Horas_Atraso'].apply(lambda x: f"{int(x)}:{int((x % 1) * 60):02d}")
+    resultado['Horas_Atraso'] = resultado['Horas_Atraso'].apply(
+        lambda x: f"{int(x)}:{int((x % 1) * 60):02d}" if x > 0 else ""
+    )
+    
+    # Processar cada tipo de afastamento
+    df_tipos = carregar_tipos_afastamento()
+    tipos_unicos = df_tipos['tipo'].unique()
+    
+    for tipo in tipos_unicos:
+        # Contar ocorrências de cada tipo
+        df[f'count_{tipo}'] = df['Afastamentos'].str.contains(tipo, case=False).astype(int)
+        contagem = df.groupby('Matricula')[f'count_{tipo}'].sum().reset_index()
+        
+        # Adicionar ao resultado
+        resultado = resultado.merge(contagem, on='Matricula', how='left')
+        resultado = resultado.rename(columns={f'count_{tipo}': tipo})
+        resultado[tipo] = resultado[tipo].apply(lambda x: x if x > 0 else "")
     
     # Renomear colunas
-    resultado.columns = ['Matricula', 'Total_Faltas', 'Total_Dias', 'Total_Atrasos', 'Tipos_Afastamento']
+    resultado = resultado.rename(columns={
+        'Falta': 'Faltas',
+        'Horas_Atraso': 'Atrasos'
+    })
     
     return resultado
 
@@ -295,8 +311,8 @@ def main():
                     df_mostrar,
                     column_config={
                         "Matricula": st.column_config.NumberColumn("Matrícula", format="%d"),
-                        "Total_Faltas": st.column_config.NumberColumn("Total de Faltas", format="%d"),
-                        "Total_Dias": st.column_config.NumberColumn("Total de Dias", format="%d")
+                        "Faltas": st.column_config.NumberColumn("Faltas", format="%d"),
+                        "Atrasos": st.column_config.TextColumn("Atrasos (HH:MM)")
                     }
                 )
                 
