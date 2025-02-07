@@ -237,62 +237,106 @@ def main():
             if filtro_local:
                 df_mostrar = df_mostrar[df_mostrar['Local'].isin(filtro_local)]
             
-            # Mostrar relatório formatado na interface
+            # Relatório formatado na interface
             st.markdown("---")
             st.subheader("Relatório Executivo", divider="rainbow")
             
-            # Cabeçalho do relatório
-            st.markdown(f"""
-            ### RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA
-            **Data do relatório:** {datetime.now().strftime('%d/%m/%Y')}
-            """)
+            # Criar conteúdo HTML para o relatório
+            html_content = f"""
+            <div style="font-family: Arial; padding: 20px;">
+                <h1 style="color: #1f77b4; text-align: center;">RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA</h1>
+                <p style="text-align: right; font-size: 14px;">Data do relatório: {datetime.now().strftime('%d/%m/%Y')}</p>
+                
+                <div style="display: flex; justify-content: space-between; margin: 20px 0;">
+                    <div style="text-align: center; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
+                        <h3>Total Analisados</h3>
+                        <h2>{len(df_mostrar):,}</h2>
+                    </div>
+                    <div style="text-align: center; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
+                        <h3>Com Direito</h3>
+                        <h2>{len(df_mostrar[df_mostrar['Status'] == 'Tem direito']):,}</h2>
+                    </div>
+                    <div style="text-align: center; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
+                        <h3>Aguardando Decisão</h3>
+                        <h2>{len(df_mostrar[df_mostrar['Status'].str.contains('Aguardando decisão', na=False)]):,}</h2>
+                    </div>
+                    <div style="text-align: center; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
+                        <h3>Valor Total</h3>
+                        <h2>R$ {df_mostrar['Valor_Premio'].sum():,.2f}</h2>
+                    </div>
+                </div>
+            """
             
-            # Resumo geral em cards
-            st.markdown("### RESUMO GERAL")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.markdown(f"""
-                🎯 **Total Analisados**
-                ### {len(df_mostrar):,}
-                """)
-            with col2:
-                st.markdown(f"""
-                ✅ **Com Direito**
-                ### {len(df_mostrar[df_mostrar['Status'] == 'Tem direito']):,}
-                """)
-            with col3:
-                st.markdown(f"""
-                ⏳ **Aguardando Decisão**
-                ### {len(df_mostrar[df_mostrar['Status'].str.contains('Aguardando decisão', na=False)]):,}
-                """)
-            with col4:
-                st.markdown(f"""
-                💰 **Valor Total**
-                ### R$ {df_mostrar['Valor_Premio'].sum():,.2f}
-                """)
-            
-            # Detalhamento por status
-            st.markdown("### DETALHAMENTO POR STATUS")
+            # Adicionar detalhamento por status
             for status in sorted(df_mostrar['Status'].unique()):
                 df_status = df_mostrar[df_mostrar['Status'] == status]
-                with st.expander(f"Status: {status}", expanded=True):
-                    st.markdown(f"""
-                    **Quantidade de Funcionários:** {len(df_status):,}  
-                    **Valor Total:** R$ {df_status['Valor_Premio'].sum():,.2f}
+                html_content += f"""
+                <div style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+                    <h2 style="color: #1f77b4;">Status: {status}</h2>
+                    <p><strong>Quantidade de Funcionários:</strong> {len(df_status):,}</p>
+                    <p><strong>Valor Total:</strong> R$ {df_status['Valor_Premio'].sum():,.2f}</p>
+                    <p><strong>Locais Afetados:</strong></p>
+                    <p>{', '.join(sorted(df_status['Local'].unique()))}</p>
                     
-                    **Locais Afetados:**  
-                    {', '.join(sorted(df_status['Local'].unique()))}
-                    """)
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                        <tr style="background-color: #1f77b4; color: white;">
+                            <th style="padding: 8px; text-align: left;">Matrícula</th>
+                            <th style="padding: 8px; text-align: left;">Nome</th>
+                            <th style="padding: 8px; text-align: left;">Cargo</th>
+                            <th style="padding: 8px; text-align: left;">Local</th>
+                            <th style="padding: 8px; text-align: right;">Valor Prêmio</th>
+                        </tr>
+                """
+                
+                for _, row in df_status.iterrows():
+                    html_content += f"""
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px;">{int(row['Matricula'])}</td>
+                            <td style="padding: 8px;">{row['Nome']}</td>
+                            <td style="padding: 8px;">{row['Cargo']}</td>
+                            <td style="padding: 8px;">{row['Local']}</td>
+                            <td style="padding: 8px; text-align: right;">R$ {row['Valor_Premio']:,.2f}</td>
+                        </tr>
+                    """
+                
+                html_content += """
+                    </table>
+                </div>
+                """
+            
+            html_content += "</div>"
+            
+            # Mostrar relatório na interface
+            st.write(html_content, unsafe_allow_html=True)
+            
+            # Botão para download do PDF
+            if st.button("Exportar Relatório como PDF"):
+                try:
+                    import pdfkit
                     
-                    if len(df_status) > 0:
-                        st.dataframe(
-                            df_status[['Matricula', 'Nome', 'Cargo', 'Local', 'Valor_Premio']],
-                            column_config={
-                                "Matricula": st.column_config.NumberColumn("Matrícula", format="%d"),
-                                "Valor_Premio": st.column_config.NumberColumn("Valor Prêmio", format="R$ %.2f")
-                            },
-                            hide_index=True
-                        )
+                    # Configurar opções do PDF
+                    options = {
+                        'page-size': 'A4',
+                        'margin-top': '1cm',
+                        'margin-right': '1cm',
+                        'margin-bottom': '1cm',
+                        'margin-left': '1cm',
+                        'encoding': 'UTF-8',
+                        'no-outline': None
+                    }
+                    
+                    # Criar PDF
+                    pdf = pdfkit.from_string(html_content, False, options=options)
+                    
+                    # Botão de download
+                    st.download_button(
+                        label="Download PDF",
+                        data=pdf,
+                        file_name="relatorio_premios.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao gerar PDF: {str(e)}. Verifique se o wkhtmltopdf está instalado.")
             
             # Estatísticas
             st.subheader("Estatísticas")
