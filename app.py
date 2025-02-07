@@ -127,11 +127,14 @@ def processar_ausencias(df):
     df['Falta'] = df['Falta'].fillna('')
     df['Falta'] = df['Falta'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
     
+    # Garantir que Afastamentos seja string
+    df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
+    
     # Agrupar por matrícula
     resultado = df.groupby('Matricula').agg({
         'Falta': 'sum',
         'Dia': 'count',
-        'Afastamentos': lambda x: '; '.join(filter(None, x))
+        'Afastamentos': lambda x: '; '.join(filter(None, [str(i).strip() for i in x if str(i).strip()]))
     }).reset_index()
     
     # Renomear colunas
