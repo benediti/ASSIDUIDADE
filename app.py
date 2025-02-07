@@ -147,9 +147,23 @@ def processar_ausencias(df):
     
     return resultado
 
+def carregar_tipos_afastamento():
+    """Carrega tipos de afastamento do arquivo"""
+    if os.path.exists("tipos_afastamento.pkl"):
+        return pd.read_pickle("tipos_afastamento.pkl")
+    return pd.DataFrame({"tipo": list(TIPOS_AFASTAMENTO.keys()), 
+                        "categoria": list(TIPOS_AFASTAMENTO.values())})
+
+def salvar_tipos_afastamento(df):
+    """Salva tipos de afastamento em arquivo"""
+    df.to_pickle("tipos_afastamento.pkl")
+
 def main():
     st.set_page_config(page_title="Sistema de Verificação de Prêmios", page_icon="🏆", layout="wide")
     st.title("Sistema de Verificação de Prêmios")
+    
+    # Carregar tipos de afastamento
+    df_tipos = carregar_tipos_afastamento()
     
     # Sidebar para configurações e uploads
     with st.sidebar:
@@ -163,16 +177,25 @@ def main():
         st.subheader("Base de Ausências")
         uploaded_ausencias = st.file_uploader("Carregar base de ausências", type=['xlsx'])
         
-        # Editor da tabela de tipos de afastamento
+        # Gerenciamento de tipos de afastamento
         st.subheader("Tipos de Afastamento")
-        if st.checkbox("Editar Tipos de Afastamento"):
-            edited_tipos = {}
-            for tipo, categoria in TIPOS_AFASTAMENTO.items():
-                nova_categoria = st.text_input(f"Categoria para {tipo}", categoria)
-                edited_tipos[tipo] = nova_categoria
-            if st.button("Salvar Alterações"):
-                TIPOS_AFASTAMENTO.update(edited_tipos)
-                st.success("Tipos de afastamento atualizados!")
+        uploaded_tipos = st.file_uploader("Atualizar tipos de afastamento", type=['xlsx'])
+        
+        if uploaded_tipos is not None:
+            try:
+                df_tipos_novo = pd.read_excel(uploaded_tipos)
+                if 'tipo' in df_tipos_novo.columns and 'categoria' in df_tipos_novo.columns:
+                    df_tipos = df_tipos_novo
+                    salvar_tipos_afastamento(df_tipos)
+                    st.success("Tipos de afastamento atualizados!")
+                else:
+                    st.error("Arquivo deve conter colunas 'tipo' e 'categoria'")
+            except Exception as e:
+                st.error(f"Erro ao processar arquivo: {str(e)}")
+        
+        # Mostrar tipos atuais
+        st.write("Tipos de Afastamento Atuais:")
+        st.dataframe(df_tipos)
     
     # Processamento da base de funcionários
     df_funcionarios = None
