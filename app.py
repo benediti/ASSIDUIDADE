@@ -132,6 +132,21 @@ def processar_ausencias(df):
     df['Falta'] = df['Falta'].fillna('')
     df['Falta'] = df['Falta'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
     
+    # Processar Ausência Parcial (atrasos)
+    def converter_para_horas(tempo):
+        if pd.isna(tempo) or tempo == '':
+            return 0
+        try:
+            # Verifica se é no formato HH:MM
+            if ':' in str(tempo):
+                horas, minutos = map(int, str(tempo).split(':'))
+                return horas + minutos/60
+            return 0
+        except:
+            return 0
+    
+    df['Horas_Atraso'] = df['Ausencia_Parcial'].apply(converter_para_horas)
+    
     # Garantir que Afastamentos seja string
     df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
     
@@ -139,11 +154,15 @@ def processar_ausencias(df):
     resultado = df.groupby('Matricula').agg({
         'Falta': 'sum',
         'Dia': 'count',
+        'Horas_Atraso': 'sum',
         'Afastamentos': lambda x: '; '.join(filter(None, [str(i).strip() for i in x if str(i).strip()]))
     }).reset_index()
     
+    # Formatar horas de atraso
+    resultado['Horas_Atraso'] = resultado['Horas_Atraso'].apply(lambda x: f"{int(x)}:{int((x % 1) * 60):02d}")
+    
     # Renomear colunas
-    resultado.columns = ['Matricula', 'Total_Faltas', 'Total_Dias', 'Tipos_Afastamento']
+    resultado.columns = ['Matricula', 'Total_Faltas', 'Total_Dias', 'Total_Atrasos', 'Tipos_Afastamento']
     
     return resultado
 
