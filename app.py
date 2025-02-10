@@ -373,6 +373,7 @@ def main():
                         [f'Valor Total: R$ {df_mostrar["Valor_Premio"].sum():,.2f}']
                     ]
                     
+                    # Ajustar a largura das colunas na tabela de resumo
                     t = Table(resumo_data, colWidths=[480])
                     t.setStyle(TableStyle([
                         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
@@ -395,7 +396,7 @@ def main():
                     story.append(t)
                     story.append(Spacer(1, 30))
                     
-                    # Detalhamento por status
+                    # Ajustar a largura das colunas na tabela de detalhamento por status
                     for status in sorted(df_mostrar['Status'].unique()):
                         df_status = df_mostrar[df_mostrar['Status'] == status]
                         
