@@ -392,9 +392,6 @@ def main():
                         ('TOPPADDING', (0, 0), (-1, -1), 5),
                         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
                     ]))
-                    t._argW[1] = 140  # Nome
-                    t._argW[2] = 120  # Cargo
-                    t._argW[3] = 120  # Local
                     story.append(t)
                     story.append(Spacer(1, 30))
                     
