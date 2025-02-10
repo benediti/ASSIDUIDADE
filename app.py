@@ -5,24 +5,15 @@ from datetime import datetime
 import io
 import logging
 import subprocess
+from reportlab.platypus import SimpleDocTemplate
+from reportlab.lib.pagesizes import A4
 
 # Configuração do logging
 logging.basicConfig(
     filename='sistema_premios.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-# Função para verificar a instalação do wkhtmltopdf
-def verifica_wkhtmltopdf():
-    try:
-        subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True)
-        return True
-    except FileNotFoundError:
-        return False
-    except subprocess.CalledProcessError:
-        return False
-        
+)        
 def carregar_tipos_afastamento():
     if os.path.exists("tipos_afastamento.pkl"):
         return pd.read_pickle("tipos_afastamento.pkl")
@@ -322,13 +313,22 @@ def main():
             
             # Exportar para PDF
             
-           if st.button("📑 Exportar Relatório como PDF"):
+           def verifica_wkhtmltopdf():
+    try:
+        subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True)
+        return True
+    except FileNotFoundError:
+        return False
+    except subprocess.CalledProcessError:
+        return False
+
+if st.button("\U0001F4C1 Exportar Relatório como PDF"):
     if not verifica_wkhtmltopdf():  
         st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
     else:
         try:
             import pdfkit  
-            pdf = pdfkit.from_string(html_content, False)
+            pdf = pdfkit.from_string("<html><body><h1>Relatório</h1></body></html>", False)
 
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(
@@ -341,7 +341,7 @@ def main():
             )
 
             doc.build([])  
-            
+
             st.download_button(
                 label="⬇️ Download PDF",
                 data=buffer.getvalue(),
