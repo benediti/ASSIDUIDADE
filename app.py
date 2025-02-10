@@ -330,7 +330,22 @@ def main():
                     st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
                 else:
                     try:
-                        import pdfkit
+    import pdfkit
+    pdf = pdfkit.from_string(html_content, False)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30
+    )
+except Exception as e:
+    logging.error(f"Erro ao gerar PDF: {e}")
+    st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
+
                         
                         # Converter o conteúdo HTML para PDF
                         pdf = pdfkit.from_string(html_content, False)
