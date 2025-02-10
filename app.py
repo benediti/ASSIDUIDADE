@@ -315,11 +315,13 @@ def main():
 
 def verifica_wkhtmltopdf():
     try:
-        subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True)
-        return True
+        result = subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True, text=True)
+        return result.returncode == 0
     except FileNotFoundError:
+        logging.error("wkhtmltopdf não encontrado. Instale-o para gerar PDFs.")
         return False
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Erro ao executar wkhtmltopdf: {e}")
         return False
 
 if st.button("📑 Exportar Relatório como PDF"):
