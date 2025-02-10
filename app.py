@@ -5,6 +5,7 @@ from datetime import datetime
 import io
 import logging
 from reportlab.platypus import PageBreak
+import pdfkit
 
 # Configuração do logging
 logging.basicConfig(
@@ -541,16 +542,20 @@ def main():
                     
                     doc.build(story)
                     
-                    # Botão de download
-                    st.download_button(
-                        label="⬇️ Download PDF",
-                        data=buffer.getvalue(),
-                        file_name="relatorio_premios.pdf",
-                        mime="application/pdf"
-                    )
-                    
-                except Exception as e:
-                    st.error(f"Erro ao gerar PDF: {str(e)}")
+                    if st.button("📑 Exportar Relatório como PDF"):
+    try:
+        # Configurar o PDF a partir do HTML
+        pdf = pdfkit.from_string(html_content, False)
+        
+        # Baixar o PDF
+        st.download_button(
+            label="⬇️ Baixar PDF",
+            data=pdf,
+            file_name="relatorio_premios.pdf",
+            mime="application/pdf"
+        )
+    except Exception as e:
+        st.error(f"Erro ao gerar PDF: {str(e)}")
 
             
             # Estatísticas
