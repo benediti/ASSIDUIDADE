@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 import io
 import logging
+from reportlab.platypus
+import PageBreak
 
 # Configuração do logging
 logging.basicConfig(
