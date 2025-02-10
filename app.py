@@ -313,15 +313,28 @@ def main():
 
 # Exportar para PDF (INSIRA AQUI)
 
+import streamlit as st
+import pandas as pd
+import os
+from datetime import datetime
+import io
+import logging
+import subprocess
+from reportlab.platypus import SimpleDocTemplate
+from reportlab.lib.pagesizes import A4
+
 def verifica_wkhtmltopdf():
     try:
         result = subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True, text=True)
         return result.returncode == 0
-    except FileNotFoundError:
-        logging.error("wkhtmltopdf não encontrado. Instale-o para gerar PDFs.")
+    except FileNotFoundError as e:
+        logging.error(f"wkhtmltopdf não encontrado: {e}")
         return False
     except subprocess.CalledProcessError as e:
         logging.error(f"Erro ao executar wkhtmltopdf: {e}")
+        return False
+    except Exception as e:
+        logging.error(f"Erro inesperado ao verificar wkhtmltopdf: {e}")
         return False
 
 if st.button("📑 Exportar Relatório como PDF"):
