@@ -326,15 +326,14 @@ def main():
             # Exportar para PDF
             
             if st.button("📑 Exportar Relatório como PDF"):
-                 if st.button("📑 Exportar Relatório como PDF"):
-                if not verifica_wkhtmltopdf():
+                if not verifica_wkhtmltopdf():  # Indentação corrigida aqui
                     st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
                 else:
                     try:
                         import pdfkit
                         
                         # Converter o conteúdo HTML para PDF
-                        pdf = pdfkit.from_string(html_content, False)
+                        pdf = pdfkit.from_string(html_content, False
                     
                     # Criar PDF
                     buffer = BytesIO()
