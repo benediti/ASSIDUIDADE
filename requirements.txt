@@ -3,4 +3,4 @@ pandas
 openpyxl
 xlrd
 xlsxwriter
-reportlab --no-cache-dir
+reportlab
