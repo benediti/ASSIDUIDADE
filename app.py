@@ -267,55 +267,55 @@ def main():
                     )
 
             # Geração de HTML para o relatório
-            html_content = f"""
-            <html>
-                <head>
-                    <style>
-                        body {{
-                            font-family: Arial, sans-serif;
-                            margin: 20px;
-                        }}
-                        h1 {{
-                            color: #1f77b4;
-                            text-align: center;
-                        }}
-                        .resumo {{
-                            margin: 20px 0;
-                            padding: 10px;
-                            background-color: #f8f9fa;
-                            border-radius: 5px;
-                        }}
-                        table {{
-                            width: 100%;
-                            border-collapse: collapse;
-                            margin-top: 20px;
-                        }}
-                        th, td {{
-                            border: 1px solid #ddd;
-                            padding: 12px;
-                            text-align: left;
-                        }}
-                        th {{
-                            background-color: #1f77b4;
-                            color: white;
-                        }}
-                        tr:nth-child(even) {{
-                            background-color: #f8f9fa;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <h1>RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA</h1>
-                    <p style="text-align: right;">Data do relatório: {datetime.now().strftime('%d/%m/%Y')}</p>
-                    
-                    <div class="resumo">
-                        <h2>Resumo Geral</h2>
-                        <p>Total Analisados: {len(df_resultado)}</p>
-                        <p>Com Direito: {len(df_resultado[df_resultado['Status'] == 'Tem direito'])}</p>
-                        <p>Aguardando Decisão: {len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)])}</p>
-                        resultado['Valor_Premio'].sum():,.2f}</p>
-                   </div>
-           """
+        html_content = f"""
+<html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 20px;
+            }}
+            h1 {{
+                color: #1f77b4;
+                text-align: center;
+            }}
+            .resumo {{
+                margin: 20px 0;
+                padding: 10px;
+                background-color: #f8f9fa;
+                border-radius: 5px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }}
+            th, td {{
+                border: 1px solid #ddd;
+                padding: 12px;
+                text-align: left;
+            }}
+            th {{
+                background-color: #1f77b4;
+                color: white;
+            }}
+            tr:nth-child(even) {{
+                background-color: #f8f9fa;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA</h1>
+        <p style="text-align: right;">Data do relatório: {datetime.now().strftime('%d/%m/%Y')}</p>
+        
+        <div class="resumo">
+            <h2>Resumo Geral</h2>
+            <p>Total Analisados: {len(df_resultado)}</p>
+            <p>Com Direito: {len(df_resultado[df_resultado['Status'] == 'Tem direito'])}</p>
+            <p>Aguardando Decisão: {len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)])}</p>
+            <p>Valor Total: R$ {df_resultado['Valor_Premio'].sum():.2f}</p>
+        </div>
+"""
            
            # Adicionar seções por status
            for status in sorted(df_resultado['Status'].unique()):
