@@ -198,10 +198,9 @@ def main():
                     st.success("Tipos de afastamento atualizados!")
                 else:
                     st.error("Arquivo deve conter colunas 'Nome' e 'Categoria'")
-    if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
-        df_mostrar = None
+            except Exception as e:
                 st.error(f"Erro ao processar arquivo: {str(e)}")
-    
+
     if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
         try:
             # Carregar base de funcionários
@@ -331,158 +330,153 @@ def verifica_wkhtmltopdf():
         logging.error(f"Erro inesperado ao verificar wkhtmltopdf: {e}")
         return False
 
-        try:
-            pdf = pdfkit.from_string(html_content, False)
+    try:
+        pdf = pdfkit.from_string(html_content, False)
 
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(
-                buffer,
-                pagesize=A4,
-                rightMargin=30,
-                leftMargin=30,
-                topMargin=30,
-                bottomMargin=30
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=30,
+            leftMargin=30,
+            topMargin=30,
+            bottomMargin=30
+        )
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Estilos personalizados
+        styles.add(ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            spaceAfter=30,
+            alignment=1,
+            textColor=colors.HexColor('#1f77b4')
+        ))
+
+        styles.add(ParagraphStyle(
+            'SectionHeader',
+            parent=styles['Heading2'],
+            fontSize=16,
+            spaceBefore=15,
+            spaceAfter=10,
+            textColor=colors.HexColor('#2c3e50')
+        ))
+
+        # Título e data
+        story.append(Paragraph("RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", styles['CustomTitle']))
+        story.append(Paragraph(
+            f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}",
+            ParagraphStyle(
+                'Date',
+                parent=styles['Normal'],
+                alignment=2,
+                fontSize=12,
+                textColor=colors.grey
             )
-            story = []
-            styles = getSampleStyleSheet()
+        ))
+        story.append(Spacer(1, 20))
 
-            # Estilos personalizados
-            styles.add(ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=24,
-                spaceAfter=30,
-                alignment=1,
-                textColor=colors.HexColor('#1f77b4')
-            ))
+        # Resumo geral
+        resumo_data = [
+            ['RESUMO GERAL'],
+            [f'Total Analisados: {len(df_mostrar):,}'],
+            [f'Com Direito: {len(df_mostrar[df_mostrar["Status"] == "Tem direito"]):,}'],
+            [f'Aguardando Decisão: {len(df_mostrar[df_mostrar["Status"].str.contains("Aguardando decisão", na=False)]):,}'],
+            [f'Valor Total: R$ {df_mostrar["Valor_Premio"].sum():,.2f}']
+        ]
 
-            styles.add(ParagraphStyle(
-                'SectionHeader',
-                parent=styles['Heading2'],
-                fontSize=16,
-                spaceBefore=15,
-                spaceAfter=10,
-                textColor=colors.HexColor('#2c3e50')
-            ))
+        t = Table(resumo_data, colWidths=[480])
+        t.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('ROWHEIGHT', (0, 0), (-1, -1), 30),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 30))
 
-            # Título e data
-            story.append(Paragraph("RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", styles['CustomTitle']))
-            story.append(Paragraph(
-                f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}",
-                ParagraphStyle(
-                    'Date',
-                    parent=styles['Normal'],
-                    alignment=2,
-                    fontSize=12,
-                    textColor=colors.grey
-                )
-            ))
-            story.append(Spacer(1, 20))
+        # Detalhamento por status
+        for status in sorted(df_mostrar['Status'].unique()):
+            df_status = df_mostrar[df_mostrar['Status'] == status]
 
-            # Resumo geral
-            resumo_data = [
-                ['RESUMO GERAL'],
-                [f'Total Analisados: {len(df_mostrar):,}'],
-                [f'Com Direito: {len(df_mostrar[df_mostrar["Status"] == "Tem direito"]):,}'],
-                [f'Aguardando Decisão: {len(df_mostrar[df_mostrar["Status"].str.contains("Aguardando decisão", na=False)]):,}'],
-                [f'Valor Total: R$ {df_mostrar["Valor_Premio"].sum():,.2f}']
+            story.append(Paragraph(f'Status: {status}', styles['SectionHeader']))
+
+            info_data = [
+                [f'Quantidade de Funcionários: {len(df_status):,}'],
+                [f'Valor Total: R$ {df_status["Valor_Premio"].sum():,.2f}'],
+                ['Locais Afetados:'],
+                [', '.join(sorted(df_status['Local'].unique()))]
             ]
 
-            t = Table(resumo_data, colWidths=[480])
+            t = Table(info_data, colWidths=[480])
             t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 14),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
-                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 12),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
                 ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-                ('ROWHEIGHT', (0, 0), (-1, -1), 30),
+                ('ROWHEIGHT', (0, 0), (-1, -1), 25),
             ]))
             story.append(t)
-            story.append(Spacer(1, 30))
+            story.append(Spacer(1, 10))
 
-            # Detalhamento por status
-            for status in sorted(df_mostrar['Status'].unique()):
-                df_status = df_mostrar[df_mostrar['Status'] == status]
+            if len(df_status) > 0:
+                data = [['Matrícula', 'Nome', 'Cargo', 'Local', 'Valor Prêmio']]
+                for _, row in df_status.iterrows():
+                    data.append([
+                        str(int(row['Matricula'])),
+                        row['Nome'],
+                        row['Cargo'],
+                        row['Local'],
+                        f'R$ {row["Valor_Premio"]:,.2f}'
+                    ])
 
-                story.append(Paragraph(f'Status: {status}', styles['SectionHeader']))
-
-                info_data = [
-                    [f'Quantidade de Funcionários: {len(df_status):,}'],
-                    [f'Valor Total: R$ {df_status["Valor_Premio"].sum():,.2f}'],
-                    ['Locais Afetados:'],
-                    [', '.join(sorted(df_status['Local'].unique()))]
-                ]
-
-                t = Table(info_data, colWidths=[480])
+                col_widths = [60, 140, 100, 120, 60]
+                t = Table(data, colWidths=col_widths)
                 t.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                     ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 10),
-                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 8),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                    ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),
                     ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-                    ('ROWHEIGHT', (0, 0), (-1, -1), 25),
+                    ('ROWHEIGHT', (0, 0), (-1, -1), 20),
                 ]))
                 story.append(t)
-                story.append(Spacer(1, 10))
 
-                if len(df_status) > 0:
-                    data = [['Matrícula', 'Nome', 'Cargo', 'Local', 'Valor Prêmio']]
-                    for _, row in df_status.iterrows():
-                        data.append([
-                            str(int(row['Matricula'])),
-                            row['Nome'],
-                            row['Cargo'],
-                            row['Local'],
-                            f'R$ {row["Valor_Premio"]:,.2f}'
-                        ])
+            story.append(PageBreak())
 
-                    col_widths = [60, 140, 100, 120, 60]
-                    t = Table(data, colWidths=col_widths)
-                    t.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 10),
-                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                        ('FONTSIZE', (0, 1), (-1, -1), 8),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-                        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-                        ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),
-                        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-                        ('ROWHEIGHT', (0, 0), (-1, -1), 20),
-                    ]))
-                    story.append(t)
+        doc.build(story)
 
-                story.append(PageBreak())
+        st.download_button(
+            label="⬇️ Download PDF",
+            data=buffer.getvalue(),
+            file_name="relatorio_premios.pdf",
+            mime="application/pdf"
+        )
 
-            doc.build(story)
+    except Exception as e:
+        logging.error(f"Erro ao gerar PDF: {e}")
+        st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
 
-            st.download_button(
-                label="⬇️ Download PDF",
-                data=buffer.getvalue(),
-                file_name="relatorio_premios.pdf",
-                mime="application/pdf"
-            )
-
-        except Exception as e:
-            logging.error(f"Erro ao gerar PDF: {e}")
-            st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
-
-        finally:
-            buffer.close()
-            st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
-
-        finally:
-            buffer.close()
-
+    finally:
+        buffer.close()
                         
                         # Converter o conteúdo HTML para PDF
 pdf = pdfkit.from_string(html_content, False)
