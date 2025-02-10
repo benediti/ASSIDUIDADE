@@ -325,9 +325,10 @@ def main():
             
             # Exportar para PDF
             
-            if st.button("📑 Exportar Relatório como PDF"):
+           if st.button("📑 Exportar Relatório como PDF"):
     if not verifica_wkhtmltopdf():  
-        st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
+        st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")  # Está correto, mas pode haver um problema após esta linha.
+
     else:
         try:  # Correto: 'try' está devidamente indentado dentro do 'else'
             import pdfkit  
