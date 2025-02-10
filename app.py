@@ -24,58 +24,39 @@ def processar_ausencias(df):
     df['Matricula'] = pd.to_numeric(df['Matricula'], errors='coerce')
     df = df.dropna(subset=['Matricula'])
     df['Matricula'] = df['Matricula'].astype(int)
-    
-    def converter_para_horas(tempo):
-        if pd.isna(tempo) or tempo == '' or tempo == '00:00':
-            return 0
-        try:
-            if ':' in str(tempo):
-                horas, minutos = map(int, str(tempo).split(':'))
-                return horas + minutos / 60
-            return 0
-        except:
-            return 0
-    
-    df['Horas_Atraso'] = df['Ausencia_Parcial'].apply(converter_para_horas)
-    df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
-    
-    resultado = df.groupby('Matricula').agg({
-        'Horas_Atraso': 'sum',
-        'Afastamentos': lambda x: '; '.join(sorted(set(filter(None, x))))
-    }).reset_index()
-    
-    resultado['Atrasos'] = resultado['Horas_Atraso'].apply(
-        lambda x: f"{int(x)}:{int((x % 1) * 60):02d}" if x > 0 else ""
-    )
-    resultado = resultado.drop('Horas_Atraso', axis=1)
-    
-    return resultado
+
+    return df
 
 def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
-    df_funcionarios = df_funcionarios[
-        pd.to_datetime(df_funcionarios['Data_Admissao']) <= pd.to_datetime(data_limite_admissao)
-    ]
-    
+    # Converter a data limite para formato brasileiro (DD/MM/YYYY)
+    data_limite_admissao = pd.to_datetime(data_limite_admissao, format='%d/%m/%Y')
+
+    # Converter as datas de admissão no DataFrame
+    df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], format='%d/%m/%Y', errors='coerce')
+
+    # Filtrar funcionários admitidos antes ou na data limite
+    df_funcionarios = df_funcionarios[df_funcionarios['Data_Admissao'] <= data_limite_admissao]
+
     resultados = []
     for _, func in df_funcionarios.iterrows():
         ausencias = df_ausencias[df_ausencias['Matricula'] == func['Matricula']]
         tem_afastamento_impeditivo = not ausencias.empty
-        
+
         valor_premio = 300.00 if func['Qtd_Horas_Mensais'] == 220 else 150.00
         status = "Tem direito" if not tem_afastamento_impeditivo else "Não tem direito"
-        
+
         resultados.append({
             'Matricula': func['Matricula'],
             'Nome': func['Nome_Funcionario'],
             'Cargo': func['Cargo'],
             'Local': func['Nome_Local'],
             'Horas_Mensais': func['Qtd_Horas_Mensais'],
-            'Data_Admissao': func['Data_Admissao'],
+            'Data_Admissao': func['Data_Admissao'].strftime('%d/%m/%Y'),
             'Valor_Premio': valor_premio if status == "Tem direito" else 0,
             'Status': status,
             'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else ''
         })
-    
+
     return pd.DataFrame(resultados)
 
 def main():
@@ -85,14 +66,16 @@ def main():
     with st.sidebar:
         st.header("Configurações")
         
-        data_limite = st.date_input("Data Limite de Admissão")
+        # Data limite com formato brasileiro
+        data_limite = st.date_input("Data Limite de Admissão").strftime('%d/%m/%Y')
+        
         uploaded_func = st.file_uploader("Carregar base de funcionários", type=['xlsx'])
         uploaded_ausencias = st.file_uploader("Carregar base de ausências", type=['xlsx'])
 
-    if uploaded_func and uploaded_ausencias and data_limite:
+    if uploaded_func and uploaded_ausencias:
         try:
             df_funcionarios = pd.read_excel(uploaded_func)
-            df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], format='%d/%m/%Y')
+            df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], format='%d/%m/%Y', errors='coerce')
 
             df_ausencias = pd.read_excel(uploaded_ausencias)
             df_ausencias = processar_ausencias(df_ausencias)
@@ -174,4 +157,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
