@@ -197,48 +197,51 @@ def main():
                 st.error(f"Erro ao processar arquivo: {str(e)}")
     
          if uploaded_func and uploaded_ausencias and data_limite:
-              try:
-            # Carregar base de funcionários
-            df_funcionarios = pd.read_excel(uploaded_func)
-            df_funcionarios.columns = [
-                "Matricula", "Nome_Funcionario", "Cargo", 
-                "Codigo_Local", "Nome_Local", "Qtd_Horas_Mensais",
-                "Tipo_Contrato", "Data_Termino_Contrato", 
-                "Dias_Experiencia", "Salario_Mes_Atual", "Data_Admissao"
-            ]
-            
-            # Converter datas
-            df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], format='%d/%m/%Y')
-            df_funcionarios['Data_Termino_Contrato'] = pd.to_datetime(df_funcionarios['Data_Termino_Contrato'], format='%d/%m/%Y', errors='coerce')
-            
-            # Carregar base de ausências
-            df_ausencias = pd.read_excel(uploaded_ausencias)
-            df_ausencias = df_ausencias.rename(columns={
-                "Matrícula": "Matricula",
-                "Centro de Custo": "Centro_de_Custo",
-                "Ausência Integral": "Ausencia_Integral",
-                "Ausência Parcial": "Ausencia_Parcial",
-                "Data de Demissão": "Data_de_Demissao"
-            })
-            df_ausencias = processar_ausencias(df_ausencias)
-            
-            # Calcular prêmios
-            df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
+    try:
+        # Carregar base de funcionários
+        df_funcionarios = pd.read_excel(uploaded_func)
+        df_funcionarios.columns = [
+            "Matricula", "Nome_Funcionario", "Cargo", 
+            "Codigo_Local", "Nome_Local", "Qtd_Horas_Mensais",
+            "Tipo_Contrato", "Data_Termino_Contrato", 
+            "Dias_Experiencia", "Salario_Mes_Atual", "Data_Admissao"
+        ]
+        
+        # Converter datas
+        df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], format='%d/%m/%Y')
+        df_funcionarios['Data_Termino_Contrato'] = pd.to_datetime(df_funcionarios['Data_Termino_Contrato'], format='%d/%m/%Y', errors='coerce')
+        
+        # Carregar base de ausências
+        df_ausencias = pd.read_excel(uploaded_ausencias)
+        df_ausencias = df_ausencias.rename(columns={
+            "Matrícula": "Matricula",
+            "Centro de Custo": "Centro_de_Custo",
+            "Ausência Integral": "Ausencia_Integral",
+            "Ausência Parcial": "Ausencia_Parcial",
+            "Data de Demissão": "Data_de_Demissao"
+        })
+        df_ausencias = processar_ausencias(df_ausencias)
+        
+        # Calcular prêmios
+        df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
 
-            # Mostrar resultado na tela
-            st.subheader("Resultado do Cálculo de Prêmios")
-            
-            # Cards com métricas
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Analisados", len(df_resultado))
-            with col2:
-                st.metric("Com Direito", len(df_resultado[df_resultado['Status'] == 'Tem direito']))
-            with col3:
-                st.metric("Aguardando Decisão", 
-                         len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)]))
-            with col4:
-                st.metric("Valor Total", f"R$ {df_resultado['Valor_Premio'].sum():,.2f}")
+        # Exibir resultados
+        st.subheader("Resultado do Cálculo de Prêmios")
+
+        # Cards com métricas
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Analisados", len(df_resultado))
+        with col2:
+            st.metric("Com Direito", len(df_resultado[df_resultado['Status'] == 'Tem direito']))
+        with col3:
+            st.metric("Aguardando Decisão", len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)]))
+        with col4:
+            st.metric("Valor Total", f"R$ {df_resultado['Valor_Premio'].sum():,.2f}")
+
+    except Exception as e:
+        st.error(f"Erro ao processar os dados: {str(e)}")
+
 
             # Detalhamento por status
             for status in sorted(df_resultado['Status'].unique()):
