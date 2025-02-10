@@ -5,8 +5,11 @@ from datetime import datetime
 import io
 import logging
 import subprocess
-from reportlab.platypus import SimpleDocTemplate
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+import pdfkit
 
 # Configuração do logging
 logging.basicConfig(
@@ -195,7 +198,8 @@ def main():
                     st.success("Tipos de afastamento atualizados!")
                 else:
                     st.error("Arquivo deve conter colunas 'Nome' e 'Categoria'")
-            except Exception as e:
+    if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
+        df_mostrar = None
                 st.error(f"Erro ao processar arquivo: {str(e)}")
     
     if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
@@ -313,16 +317,6 @@ def main():
 
 # Exportar para PDF (INSIRA AQUI)
 
-import streamlit as st
-import pandas as pd
-import os
-from datetime import datetime
-import io
-import logging
-import subprocess
-from reportlab.platypus import SimpleDocTemplate
-from reportlab.lib.pagesizes import A4
-
 def verifica_wkhtmltopdf():
     try:
         result = subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True, text=True)
@@ -337,13 +331,8 @@ def verifica_wkhtmltopdf():
         logging.error(f"Erro inesperado ao verificar wkhtmltopdf: {e}")
         return False
 
-if st.button("📑 Exportar Relatório como PDF"):
-    if not verifica_wkhtmltopdf():  
-        st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
-    else:
         try:
-            import pdfkit  
-            pdf = pdfkit.from_string("<html><body><h1>Relatório</h1></body></html>", False)
+            pdf = pdfkit.from_string(html_content, False)
 
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(
@@ -354,8 +343,127 @@ if st.button("📑 Exportar Relatório como PDF"):
                 topMargin=30,
                 bottomMargin=30
             )
+            story = []
+            styles = getSampleStyleSheet()
 
-            doc.build([])
+            # Estilos personalizados
+            styles.add(ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                spaceAfter=30,
+                alignment=1,
+                textColor=colors.HexColor('#1f77b4')
+            ))
+
+            styles.add(ParagraphStyle(
+                'SectionHeader',
+                parent=styles['Heading2'],
+                fontSize=16,
+                spaceBefore=15,
+                spaceAfter=10,
+                textColor=colors.HexColor('#2c3e50')
+            ))
+
+            # Título e data
+            story.append(Paragraph("RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", styles['CustomTitle']))
+            story.append(Paragraph(
+                f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}",
+                ParagraphStyle(
+                    'Date',
+                    parent=styles['Normal'],
+                    alignment=2,
+                    fontSize=12,
+                    textColor=colors.grey
+                )
+            ))
+            story.append(Spacer(1, 20))
+
+            # Resumo geral
+            resumo_data = [
+                ['RESUMO GERAL'],
+                [f'Total Analisados: {len(df_mostrar):,}'],
+                [f'Com Direito: {len(df_mostrar[df_mostrar["Status"] == "Tem direito"]):,}'],
+                [f'Aguardando Decisão: {len(df_mostrar[df_mostrar["Status"].str.contains("Aguardando decisão", na=False)]):,}'],
+                [f'Valor Total: R$ {df_mostrar["Valor_Premio"].sum():,.2f}']
+            ]
+
+            t = Table(resumo_data, colWidths=[480])
+            t.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('ROWHEIGHT', (0, 0), (-1, -1), 30),
+            ]))
+            story.append(t)
+            story.append(Spacer(1, 30))
+
+            # Detalhamento por status
+            for status in sorted(df_mostrar['Status'].unique()):
+                df_status = df_mostrar[df_mostrar['Status'] == status]
+
+                story.append(Paragraph(f'Status: {status}', styles['SectionHeader']))
+
+                info_data = [
+                    [f'Quantidade de Funcionários: {len(df_status):,}'],
+                    [f'Valor Total: R$ {df_status["Valor_Premio"].sum():,.2f}'],
+                    ['Locais Afetados:'],
+                    [', '.join(sorted(df_status['Local'].unique()))]
+                ]
+
+                t = Table(info_data, colWidths=[480])
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                    ('ROWHEIGHT', (0, 0), (-1, -1), 25),
+                ]))
+                story.append(t)
+                story.append(Spacer(1, 10))
+
+                if len(df_status) > 0:
+                    data = [['Matrícula', 'Nome', 'Cargo', 'Local', 'Valor Prêmio']]
+                    for _, row in df_status.iterrows():
+                        data.append([
+                            str(int(row['Matricula'])),
+                            row['Nome'],
+                            row['Cargo'],
+                            row['Local'],
+                            f'R$ {row["Valor_Premio"]:,.2f}'
+                        ])
+
+                    col_widths = [60, 140, 100, 120, 60]
+                    t = Table(data, colWidths=col_widths)
+                    t.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 8),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                        ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                        ('ROWHEIGHT', (0, 0), (-1, -1), 20),
+                    ]))
+                    story.append(t)
+
+                story.append(PageBreak())
+
+            doc.build(story)
 
             st.download_button(
                 label="⬇️ Download PDF",
@@ -366,6 +474,10 @@ if st.button("📑 Exportar Relatório como PDF"):
 
         except Exception as e:
             logging.error(f"Erro ao gerar PDF: {e}")
+            st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
+
+        finally:
+            buffer.close()
             st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
 
         finally:
