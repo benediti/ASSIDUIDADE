@@ -162,6 +162,42 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
     
     return pd.DataFrame(resultados)
 
+def exportar_excel(df_mostrar, df_funcionarios):
+    output = io.BytesIO()
+    df_export = df_mostrar.copy()
+    df_export['Salario'] = df_funcionarios.set_index('Matricula').loc[df_export['Matricula'], 'Salario_Mes_Atual'].values
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_export.to_excel(writer, index=False, sheet_name='Resultados Detalhados')
+        
+        relatorio_diretoria = pd.DataFrame([
+            ["RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", ""],
+            [f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}", ""],
+            ["", ""],
+            ["RESUMO GERAL", ""],
+            [f"Total de Funcionários Analisados: {len(df_export)}", ""],
+            [f"Funcionários com Direito: {len(df_export[df_export['Status'] == 'Tem direito'])}", ""],
+            [f"Funcionários Aguardando Decisão: {len(df_export[df_export['Status'].str.contains('Aguardando decisão', na=False)])}", ""],
+            [f"Valor Total dos Prêmios: R$ {df_export['Valor_Premio'].sum():,.2f}", ""],
+            ["", ""],
+            ["DETALHAMENTO POR STATUS", ""],
+        ])
+        
+        for status in df_export['Status'].unique():
+            df_status = df_export[df_export['Status'] == status]
+            relatorio_diretoria = pd.concat([relatorio_diretoria, pd.DataFrame([
+                [f"\nStatus: {status}", ""],
+                [f"Quantidade de Funcionários: {len(df_status)}", ""],
+                [f"Valor Total: R$ {df_status['Valor_Premio'].sum():,.2f}", ""],
+                ["Locais Afetados:", ""],
+                [", ".join(df_status['Local'].unique()), ""],
+                ["", ""]
+            ])])
+        
+        relatorio_diretoria.to_excel(writer, index=False, header=False, sheet_name='Relatório Executivo')
+    
+    return output.getvalue()
+
 def main():
     st.set_page_config(page_title="Sistema de Verificação de Prêmios", page_icon="🏆", layout="wide")
     st.title("Sistema de Verificação de Prêmios")
@@ -569,48 +605,10 @@ def main():
             
             # Exportar resultados
             if st.button("Exportar Resultados"):
-                output = io.BytesIO()
-                
-                # Preparar dados para exportação
-                df_export = df_mostrar.copy()
-                df_export['Salario'] = df_funcionarios.set_index('Matricula').loc[df_export['Matricula'], 'Salario_Mes_Atual'].values
-                
-                # Exportar planilha detalhada
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_export.to_excel(writer, index=False, sheet_name='Resultados Detalhados')
-                    
-                    # Criar relatório para diretoria
-                    relatorio_diretoria = pd.DataFrame([
-                        ["RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", ""],
-                        [f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}", ""],
-                        ["", ""],
-                        ["RESUMO GERAL", ""],
-                        [f"Total de Funcionários Analisados: {len(df_export)}", ""],
-                        [f"Funcionários com Direito: {len(df_export[df_export['Status'] == 'Tem direito'])}", ""],
-                        [f"Funcionários Aguardando Decisão: {len(df_export[df_export['Status'].str.contains('Aguardando decisão', na=False)])}", ""],
-                        [f"Valor Total dos Prêmios: R$ {df_export['Valor_Premio'].sum():,.2f}", ""],
-                        ["", ""],
-                        ["DETALHAMENTO POR STATUS", ""],
-                    ])
-                    
-                    # Adicionar detalhamento por status
-                    for status in df_export['Status'].unique():
-                        df_status = df_export[df_export['Status'] == status]
-                        relatorio_diretoria = pd.concat([relatorio_diretoria, pd.DataFrame([
-                            [f"\nStatus: {status}", ""],
-                            [f"Quantidade de Funcionários: {len(df_status)}", ""],
-                            [f"Valor Total: R$ {df_status['Valor_Premio'].sum():,.2f}", ""],
-                            ["Locais Afetados:", ""],
-                            [", ".join(df_status['Local'].unique()), ""],
-                            ["", ""]
-                        ])])
-                    
-                    # Salvar relatório em nova aba
-                    relatorio_diretoria.to_excel(writer, index=False, header=False, sheet_name='Relatório Executivo')
-                
+                output = exportar_excel(df_mostrar, df_funcionarios)
                 st.download_button(
                     label="Download Excel",
-                    data=output.getvalue(),
+                    data=output,
                     file_name="resultado_premios.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
