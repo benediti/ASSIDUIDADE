@@ -329,8 +329,8 @@ def main():
                 if not verifica_wkhtmltopdf():  # Indentação corrigida aqui
                     st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
                 else:
-                    try:
-    import pdfkit
+    try:
+    import pdfkit  # Correto: esta linha está indentada
     pdf = pdfkit.from_string(html_content, False)
 
     buffer = BytesIO()
@@ -342,9 +342,10 @@ def main():
         topMargin=30,
         bottomMargin=30
     )
-except Exception as e:
+except Exception as e:  # Adicionando um bloco except corretamente
     logging.error(f"Erro ao gerar PDF: {e}")
     st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
+
 
                         
                         # Converter o conteúdo HTML para PDF
