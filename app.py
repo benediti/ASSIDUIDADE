@@ -373,7 +373,7 @@ if st.button("📑 Exportar Relatório como PDF"):
 
                         
                         # Converter o conteúdo HTML para PDF
-                        pdf = pdfkit.from_string(html_content, False)
+pdf = pdfkit.from_string(html_content, False)
                     
                     # Criar PDF
                     buffer = BytesIO()
