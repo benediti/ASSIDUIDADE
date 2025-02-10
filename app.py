@@ -207,8 +207,7 @@ def main():
         
         data_limite = st.date_input(
             "Data Limite de Admissão",
-            help="Funcionários admitidos após esta data não terão direito ao prêmio",
-            format="DD/MM/YYYY"
+            help="Funcionários admitidos após esta data não terão direito ao prêmio"
         )
         
         st.subheader("Base de Funcionários")
