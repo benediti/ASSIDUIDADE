@@ -17,13 +17,10 @@ logging.basicConfig(
 def verifica_wkhtmltopdf():
     try:
         subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True)
-        print("wkhtmltopdf está instalado.")
         return True
     except FileNotFoundError:
-        print("Erro: wkhtmltopdf não encontrado. Instale-o para usar a funcionalidade de PDF.")
         return False
-    except subprocess.CalledProcessError as e:
-        print(f"Erro ao executar wkhtmltopdf: {e}")
+    except subprocess.CalledProcessError:
         return False
         
 def carregar_tipos_afastamento():
@@ -327,14 +324,13 @@ def main():
             
            if st.button("📑 Exportar Relatório como PDF"):
     if not verifica_wkhtmltopdf():  
-        st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")  # Está correto, mas pode haver um problema após esta linha.
-
+        st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
     else:
-        try:  # Correto: 'try' está devidamente indentado dentro do 'else'
+        try:
             import pdfkit  
             pdf = pdfkit.from_string(html_content, False)
 
-            buffer = BytesIO()
+            buffer = io.BytesIO()
             doc = SimpleDocTemplate(
                 buffer,
                 pagesize=A4,
@@ -343,7 +339,17 @@ def main():
                 topMargin=30,
                 bottomMargin=30
             )
-        except Exception as e:  # Correto: 'except' está alinhado com 'try'
+
+            doc.build([])  
+            
+            st.download_button(
+                label="⬇️ Download PDF",
+                data=buffer.getvalue(),
+                file_name="relatorio_premios.pdf",
+                mime="application/pdf"
+            )
+
+        except Exception as e:
             logging.error(f"Erro ao gerar PDF: {e}")
             st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
                         
