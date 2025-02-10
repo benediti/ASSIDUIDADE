@@ -313,13 +313,22 @@ def main():
 
 # Exportar para PDF (INSIRA AQUI)
 
+def verifica_wkhtmltopdf():
+    try:
+        subprocess.run(['wkhtmltopdf', '--version'], capture_output=True, check=True)
+        return True
+    except FileNotFoundError:
+        return False
+    except subprocess.CalledProcessError:
+        return False
+
 if st.button("📑 Exportar Relatório como PDF"):
     if not verifica_wkhtmltopdf():  
         st.error("wkhtmltopdf não está instalado. Instale-o para gerar PDFs.")
     else:
         try:
             import pdfkit  
-            pdf = pdfkit.from_string(html_content, False)
+            pdf = pdfkit.from_string("<html><body><h1>Relatório</h1></body></html>", False)
 
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(
@@ -331,7 +340,7 @@ if st.button("📑 Exportar Relatório como PDF"):
                 bottomMargin=30
             )
 
-            doc.build([])  
+            doc.build([])
 
             st.download_button(
                 label="⬇️ Download PDF",
@@ -343,6 +352,9 @@ if st.button("📑 Exportar Relatório como PDF"):
         except Exception as e:
             logging.error(f"Erro ao gerar PDF: {e}")
             st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
+
+        finally:
+            buffer.close()
 
                         
                         # Converter o conteúdo HTML para PDF
