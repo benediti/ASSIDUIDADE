@@ -196,8 +196,8 @@ def main():
             except Exception as e:
                 st.error(f"Erro ao processar arquivo: {str(e)}")
     
-    if uploaded_func and uploaded_ausencias and data_limite:
-        try:
+         if uploaded_func and uploaded_ausencias and data_limite:
+              try:
             # Carregar base de funcionários
             df_funcionarios = pd.read_excel(uploaded_func)
             df_funcionarios.columns = [
@@ -266,8 +266,6 @@ def main():
                         }
                     )
 
-            # Geração de HTML para o relatório
-try:
     # Geração de HTML para o relatório
     html_content = f"""
     <html>
