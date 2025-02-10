@@ -273,9 +273,12 @@ def main():
             if filtro_local:
                 df_mostrar = df_mostrar[df_mostrar['Local'].isin(filtro_local)]
             
+            # Mostrar tabela de resultados na interface
+            st.dataframe(df_mostrar)
+            
             # Relatório formatado na interface
             st.markdown("---")
-            st.subheader("Relatório Executivo", divider="rainbow")
+            st.subheader("Relatório Executivo")
             
             # Criar conteúdo HTML para o relatório
             html_content = f"""
@@ -343,7 +346,7 @@ def main():
             html_content += "</div>"
             
             # Mostrar relatório na interface
-            st.write(html_content, unsafe_allow_html=True)
+            st.markdown(html_content, unsafe_allow_html=True)
             
             # Exportar para PDF
             if st.button("📑 Exportar Relatório como PDF"):
@@ -488,96 +491,6 @@ def main():
                             story.append(t)
                         
                         story.append(PageBreak())
-                    
-                    doc.build(story)
-                    
-                    # Resumo Geral
-                    data = [
-                        ["RESUMO GERAL"],
-                        [f"Total Analisados: {len(df_mostrar):,}"],
-                        [f"Com Direito: {len(df_mostrar[df_mostrar['Status'] == 'Tem direito']):,}"],
-                        [f"Aguardando Decisão: {len(df_mostrar[df_mostrar['Status'].str.contains('Aguardando decisão', na=False)]):,}"],
-                        [f"Valor Total: R$ {df_mostrar['Valor_Premio'].sum():,.2f}"]
-                    ]
-                    
-                    t = Table(data, colWidths=[450])
-                    t.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 14),
-                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                        ('FONTSIZE', (0, 1), (-1, -1), 12),
-                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                    ]))
-                    story.append(t)
-                    story.append(Spacer(1, 20))
-                    
-                    # Detalhamento por status
-                    for status in sorted(df_mostrar['Status'].unique()):
-                        df_status = df_mostrar[df_mostrar['Status'] == status]
-                        
-                        story.append(Paragraph(f"Status: {status}", styles['Heading2']))
-                        story.append(Spacer(1, 10))
-                        
-                        data = [
-                            [f"Quantidade de Funcionários: {len(df_status):,}"],
-                            [f"Valor Total: R$ {df_status['Valor_Premio'].sum():,.2f}"],
-                            ["Locais Afetados:"],
-                            [', '.join(sorted(df_status['Local'].unique()))]
-                        ]
-                        
-                        t = Table(data, colWidths=[450])
-                        t.setStyle(TableStyle([
-                            ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
-                            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                            ('FONTSIZE', (0, 0), (-1, -1), 10),
-                            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                        ]))
-                        story.append(t)
-                        story.append(Spacer(1, 10))
-                        
-                        # Lista de funcionários
-                        if len(df_status) > 0:
-                            data = [[
-                                "Matrícula", "Nome", "Cargo", "Local", "Valor Prêmio"
-                            ]]
-                            for _, row in df_status.iterrows():
-                                data.append([
-                                    str(int(row['Matricula'])),
-                                    row['Nome'],
-                                    row['Cargo'],
-                                    row['Local'],
-                                    f"R$ {row['Valor_Premio']:,.2f}"
-                                ])
-                            
-                            t = Table(data, colWidths=[60, 120, 100, 100, 70])
-                            t.setStyle(TableStyle([
-                                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-                                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-                                ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),
-                                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                                ('ALIGN', (0, 0), (-1, -1), 'CENTER')
-                            ]))
-                            story.append(t)
-                        
-                        story.append(Spacer(1, 20))
                     
                     doc.build(story)
                     
