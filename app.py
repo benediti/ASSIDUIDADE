@@ -267,118 +267,121 @@ def main():
                     )
 
             # Geração de HTML para o relatório
-        html_content = f"""
-<html>
-    <head>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                margin: 20px;
-            }}
-            h1 {{
-                color: #1f77b4;
-                text-align: center;
-            }}
-            .resumo {{
-                margin: 20px 0;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border-radius: 5px;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-            }}
-            th, td {{
-                border: 1px solid #ddd;
-                padding: 12px;
-                text-align: left;
-            }}
-            th {{
-                background-color: #1f77b4;
-                color: white;
-            }}
-            tr:nth-child(even) {{
-                background-color: #f8f9fa;
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA</h1>
-        <p style="text-align: right;">Data do relatório: {datetime.now().strftime('%d/%m/%Y')}</p>
-        
-        <div class="resumo">
-            <h2>Resumo Geral</h2>
-            <p>Total Analisados: {len(df_resultado)}</p>
-            <p>Com Direito: {len(df_resultado[df_resultado['Status'] == 'Tem direito'])}</p>
-            <p>Aguardando Decisão: {len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)])}</p>
-            <p>Valor Total: R$ {df_resultado['Valor_Premio'].sum():.2f}</p>
-        </div>
-"""
-           
-           # Adicionar seções por status
-           for status in sorted(df_resultado['Status'].unique()):
-               df_status = df_resultado[df_resultado['Status'] == status]
-               html_content += f"""
-                   <h2>Status: {status}</h2>
-                   <p>Quantidade de Funcionários: {len(df_status)}</p>
-                   <p>Valor Total: R$ {df_status['Valor_Premio'].sum():,.2f}</p>
-                   <table>
-                       <tr>
-                           <th>Matrícula</th>
-                           <th>Nome</th>
-                           <th>Cargo</th>
-                           <th>Local</th>
-                           <th>Valor Prêmio</th>
-                       </tr>
-               """
-               
-               for _, row in df_status.iterrows():
-                   html_content += f"""
-                       <tr>
-                           <td>{int(row['Matricula'])}</td>
-                           <td>{row['Nome']}</td>
-                           <td>{row['Cargo']}</td>
-                           <td>{row['Local']}</td>
-                           <td style="text-align: right;">R$ {row['Valor_Premio']:,.2f}</td>
-                       </tr>
-                   """
-               
-               html_content += "</table>"
-           
-           html_content += """
-               </body>
-           </html>
-           """
+try:
+    # Geração de HTML para o relatório
+    html_content = f"""
+    <html>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    margin: 20px;
+                }}
+                h1 {{
+                    color: #1f77b4;
+                    text-align: center;
+                }}
+                .resumo {{
+                    margin: 20px 0;
+                    padding: 10px;
+                    background-color: #f8f9fa;
+                    border-radius: 5px;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 20px;
+                }}
+                th, td {{
+                    border: 1px solid #ddd;
+                    padding: 12px;
+                    text-align: left;
+                }}
+                th {{
+                    background-color: #1f77b4;
+                    color: white;
+                }}
+                tr:nth-child(even) {{
+                    background-color: #f8f9fa;
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA</h1>
+            <p style="text-align: right;">Data do relatório: {datetime.now().strftime('%d/%m/%Y')}</p>
+            
+            <div class="resumo">
+                <h2>Resumo Geral</h2>
+                <p>Total Analisados: {len(df_resultado)}</p>
+                <p>Com Direito: {len(df_resultado[df_resultado['Status'] == 'Tem direito'])}</p>
+                <p>Aguardando Decisão: {len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)])}</p>
+                <p>Valor Total: R$ {df_resultado['Valor_Premio'].sum():.2f}</p>
+            </div>
+    """
 
-           # Botão para exportar para PDF
-           if st.button("📑 Exportar Relatório como PDF"):
-               try:
-                   options = {
-                       'page-size': 'A4',
-                       'margin-top': '20mm',
-                       'margin-right': '20mm',
-                       'margin-bottom': '20mm',
-                       'margin-left': '20mm',
-                       'encoding': 'UTF-8',
-                       'orientation': 'Landscape'
-                   }
-                   
-                   pdf = pdfkit.from_string(html_content, False, options=options)
-                   
-                   st.download_button(
-                       label="⬇️ Baixar PDF",
-                       data=pdf,
-                       file_name="relatorio_premios.pdf",
-                       mime="application/pdf"
-                   )
-               except Exception as e:
-                   st.error(f"Erro ao gerar PDF: {str(e)}")
-                   st.error("Certifique-se de que o wkhtmltopdf está instalado no sistema.")
+    # Adicionar seções por status
+    for status in sorted(df_resultado['Status'].unique()):
+        df_status = df_resultado[df_resultado['Status'] == status]
+        html_content += f"""
+            <h2>Status: {status}</h2>
+            <p>Quantidade de Funcionários: {len(df_status)}</p>
+            <p>Valor Total: R$ {df_status['Valor_Premio'].sum():,.2f}</p>
+            <table>
+                <tr>
+                    <th>Matrícula</th>
+                    <th>Nome</th>
+                    <th>Cargo</th>
+                    <th>Local</th>
+                    <th>Valor Prêmio</th>
+                </tr>
+        """
 
-       except Exception as e:
-           st.error(f"Erro ao processar dados: {str(e)}")
+        for _, row in df_status.iterrows():
+            html_content += f"""
+                <tr>
+                    <td>{int(row['Matricula'])}</td>
+                    <td>{row['Nome']}</td>
+                    <td>{row['Cargo']}</td>
+                    <td>{row['Local']}</td>
+                    <td style="text-align: right;">R$ {row['Valor_Premio']:,.2f}</td>
+                </tr>
+            """
+
+        html_content += "</table>"
+
+    html_content += """
+        </body>
+    </html>
+    """
+
+    # Botão para exportar para PDF
+    if st.button("📑 Exportar Relatório como PDF"):
+        try:
+            options = {
+                'page-size': 'A4',
+                'margin-top': '20mm',
+                'margin-right': '20mm',
+                'margin-bottom': '20mm',
+                'margin-left': '20mm',
+                'encoding': 'UTF-8',
+                'orientation': 'Landscape'
+            }
+
+            pdf = pdfkit.from_string(html_content, False, options=options)
+
+            st.download_button(
+                label="⬇️ Baixar PDF",
+                data=pdf,
+                file_name="relatorio_premios.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"Erro ao gerar PDF: {str(e)}")
+            st.error("Certifique-se de que o wkhtmltopdf está instalado no sistema.")
+
+except Exception as e:
+    st.error(f"Erro ao processar dados: {str(e)}")
+
 
 if __name__ == "__main__":
    main()
