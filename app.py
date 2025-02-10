@@ -307,3 +307,166 @@ def main():
             df_ausencias = processar_ausencias(df_ausencias)
             
             # Calcular prêmios
+            df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
+            
+            # Cards com métricas
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Analisados", len(df_resultado))
+            with col2:
+                st.metric("Com Direito", len(df_resultado[df_resultado['Status'] == 'Tem direito']))
+            with col3:
+                st.metric("Aguardando Decisão", 
+                         len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)]))
+            with col4:
+                st.metric("Valor Total", f"R$ {df_resultado['Valor_Premio'].sum():,.2f}")
+            
+            st.markdown("---")
+            
+            # Detalhamento por status
+            for status in sorted(df_resultado['Status'].unique()):
+                df_status = df_resultado[df_resultado['Status'] == status]
+                with st.expander(f"Status: {status}", expanded=True):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Quantidade de Funcionários", len(df_status))
+                    with col2:
+                        st.metric("Valor Total", f"R$ {df_status['Valor_Premio'].sum():,.2f}")
+                    
+                    st.subheader("Locais Afetados")
+                    st.write(", ".join(sorted(df_status['Local'].unique())))
+                    
+                    st.subheader("Lista de Funcionários")
+                    st.dataframe(
+                        df_status[['Matricula', 'Nome', 'Cargo', 'Local', 'Valor_Premio']],
+                        hide_index=True,
+                        column_config={
+                            "Matricula": st.column_config.NumberColumn("Matrícula", format="%d"),
+                            "Nome": st.column_config.TextColumn("Nome"),
+                            "Cargo": st.column_config.TextColumn("Cargo"),
+                            "Local": st.column_config.TextColumn("Local"),
+                            "Valor_Premio": st.column_config.NumberColumn("Valor Prêmio", format="R$ %.2f")
+                        }
+                    )
+            
+            # Botão para exportar PDF
+            if st.button("📑 Exportar Relatório como PDF"):
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+                from reportlab.lib import colors
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                from reportlab.lib.pagesizes import A4
+                from io import BytesIO
+                
+                try:
+                    # Criar PDF
+                    buffer = BytesIO()
+                    doc = SimpleDocTemplate(
+                        buffer,
+                        pagesize=A4,
+                        rightMargin=30,
+                        leftMargin=30,
+                        topMargin=30,
+                        bottomMargin=30
+                    )
+                    story = []
+                    
+                    # Criar estilos
+                    styles = getSampleStyleSheet()
+                    title_style = ParagraphStyle(
+                        'CustomTitle',
+                        parent=styles['Heading1'],
+                        fontSize=24,
+                        alignment=1,
+                        spaceAfter=30
+                    )
+                    
+                    # Título
+                    story.append(Paragraph("RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", title_style))
+                    story.append(Spacer(1, 20))
+                    
+                    # Resumo Geral
+                    resumo_data = [
+                        ["RESUMO GERAL"],
+                        [f"Total Analisados: {len(df_resultado)}"],
+                        [f"Com Direito: {len(df_resultado[df_resultado['Status'] == 'Tem direito'])}"],
+                        [f"Aguardando Decisão: {len(df_resultado[df_resultado['Status'].str.contains('Aguardando decisão', na=False)])}"],
+                        [f"Valor Total: R$ {df_resultado['Valor_Premio'].sum():,.2f}"]
+                    ]
+                    
+                    t = Table(resumo_data, colWidths=[450])
+                    t.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 14),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                    ]))
+                    story.append(t)
+                    story.append(Spacer(1, 20))
+                    
+                    # Detalhamento por status
+                    for status in sorted(df_resultado['Status'].unique()):
+                        df_status = df_resultado[df_resultado['Status'] == status]
+                        
+                        story.append(Paragraph(f"Status: {status}", styles['Heading2']))
+                        
+                        info_data = [
+                            [f"Quantidade de Funcionários: {len(df_status)}"],
+                            [f"Valor Total: R$ {df_status['Valor_Premio'].sum():,.2f}"],
+                            ["Locais Afetados:"],
+                            [", ".join(sorted(df_status['Local'].unique()))]
+                        ]
+                        
+                        t = Table(info_data, colWidths=[450])
+                        t.setStyle(TableStyle([
+                            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                            ('FONTSIZE', (0, 0), (-1, -1), 10)
+                        ]))
+                        story.append(t)
+                        story.append(Spacer(1, 10))
+                        
+                        if len(df_status) > 0:
+                            funcionarios_data = [[
+                                "Matrícula", "Nome", "Cargo", "Local", "Valor Prêmio"
+                            ]]
+                            for _, row in df_status.iterrows():
+                                funcionarios_data.append([
+                                    str(int(row['Matricula'])),
+                                    row['Nome'],
+                                    row['Cargo'],
+                                    row['Local'],
+                                    f"R$ {row['Valor_Premio']:,.2f}"
+                                ])
+                            
+                            t = Table(funcionarios_data, colWidths=[60, 100, 90, 140, 60])
+                            t.setStyle(TableStyle([
+                                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                                ('ALIGN', (-1, 0), (-1, -1), 'RIGHT')
+                            ]))
+                            story.append(t)
+                        
+                        story.append(PageBreak())
+                    
+                    doc.build(story)
+                    
+                    st.download_button(
+                        "⬇️ Download PDF",
+                        data=buffer.getvalue(),
+                        file_name="relatorio_premios.pdf",
+                        mime="application/pdf"
+                    )
+                
+                except Exception as e:
+                    st.error(f"Erro ao gerar PDF: {str(e)}")
+        
+        except Exception as e:
+            st.error(f"Erro ao processar dados: {str(e)}")
+
+if __name__ == "__main__":
+    main()
