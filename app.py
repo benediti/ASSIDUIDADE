@@ -543,9 +543,6 @@ def main():
                     doc.build(story)
                     
                     if st.button("📑 Exportar Relatório como PDF"):
-    try:
-        # Configurar o PDF a partir do HTML
-        pdf = pdfkit.from_string(html_content, False)
         
         # Baixar o PDF
         st.download_button(
