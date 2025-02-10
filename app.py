@@ -565,7 +565,7 @@ def main():
                             mime="application/pdf"
                         )
 
-                    except Exception as e:
+                    except Exception as e:  # Bloco except adicionado aqui
                         logging.error(f"Erro ao gerar PDF: {e}")
                         st.error("Ocorreu um erro ao gerar o PDF. Verifique o arquivo de log para detalhes.")
 
