@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 def editar_valores_status(df):
     # Função para editar valores e status das pessoas que têm direito ao prêmio
@@ -9,7 +10,7 @@ def editar_valores_status(df):
     df_direito = df[df['Status'] == 'Tem direito'].copy()
     
     # Exibir tabela editável
-    edited_df = st.dataframe(df_direito)
+    edited_df = st.experimental_data_editor(df_direito, num_rows="dynamic")
     
     return edited_df
 
