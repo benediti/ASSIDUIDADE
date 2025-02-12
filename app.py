@@ -128,7 +128,7 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
             if tem_afastamento_decisao:
                 status = "Aguardando decisão"
                 total_atrasos = ausencias['Atrasos'].iloc[0] if not ausencias.empty else ""
-            elif tem_apenas_permitidos ou ausencias.empty:
+            elif tem_apenas_permitidos or ausencias.empty:
                 status = "Tem direito"
         
         resultados.append({
