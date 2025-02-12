@@ -6,3 +6,4 @@ xlsxwriter
 reportlab
 pdfkit
 numpy
+datetime
