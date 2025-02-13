@@ -6,10 +6,18 @@ def editar_valores_status(df):
     # Retorna o DataFrame atualizado
     st.subheader("Editar Valores e Status")
     
+    # Inicializar estado
+    if 'df_original' not in st.session_state:
+        st.session_state.df_original = df.copy()
+    if 'df_editado' not in st.session_state:
+        st.session_state.df_editado = df.copy()
+    
     # Filtro principal por status
     status_filter = st.selectbox("Filtrar por Status", options=["Todos", "Tem direito", "Não tem direito", "Aguardando decisão"], key="status_principal_selectbox")
     if status_filter != "Todos":
-        df = df[df['Status'].str.contains(status_filter)]
+        df = st.session_state.df_editado[st.session_state.df_editado['Status'].str.contains(status_filter)]
+    else:
+        df = st.session_state.df_editado
     
     # Filtros de pesquisa
     matricula_filter = st.text_input("Filtrar por Matrícula", key="matricula_busca")
@@ -35,27 +43,36 @@ def editar_valores_status(df):
             st.write(f"Funcionário: {row['Nome']}")
             status_options = ["Tem direito", "Não tem direito", "Aguardando decisão"]
             current_status = next((opt for opt in status_options if opt in row['Status']), "Tem direito")
-            df.at[index, 'Status'] = st.selectbox(
+            st.session_state.df_editado.at[index, 'Status'] = st.selectbox(
                 "Status",
                 options=status_options,
                 index=status_options.index(current_status),
                 key=f"status_{index}"
             )
-            df.at[index, 'Valor_Premio'] = st.number_input(
+            st.session_state.df_editado.at[index, 'Valor_Premio'] = st.number_input(
                 "Valor do Prêmio",
                 min_value=0.0,
                 value=row['Valor_Premio'],
                 step=50.0,
                 key=f"valor_premio_{index}"
             )
-            df.at[index, 'Observações'] = st.text_input(
+            st.session_state.df_editado.at[index, 'Observações'] = st.text_input(
                 "Observações",
                 value=row.get('Observações', ''),
                 key=f"observacoes_{index}"
             )
             st.write("---")
     
-    return df
+    # Botões de ação
+    if st.button("Salvar Alterações"):
+        st.session_state.df_original = st.session_state.df_editado.copy()
+        st.success("Alterações salvas com sucesso!")
+    
+    if st.button("Reverter Alterações"):
+        st.session_state.df_editado = st.session_state.df_original.copy()
+        st.warning("Alterações revertidas!")
+    
+    return st.session_state.df_editado
 
 def exportar_novo_excel(df, caminho_arquivo):
     # Filtrar apenas as pessoas que têm direito ao prêmio
@@ -65,4 +82,12 @@ def exportar_novo_excel(df, caminho_arquivo):
     df_exportar = df_direito[['CPF', 'SomaDeVALOR', 'Nome', 'CNPJ']]
     
     # Exportar para um novo arquivo Excel
-    df_exportar.to_excel(caminho_arquivo, index=False)
+    with pd.ExcelWriter(caminho_arquivo, engine='openpyxl') as writer:
+        df_exportar.to_excel(writer, index=False, sheet_name='Funcionarios com Direito')
+        
+        # Adicionar aba de resumo
+        resumo = pd.DataFrame({
+            "Métrica": ["Total de Funcionários", "Funcionários com Direito", "Valor Total dos Prêmios"],
+            "Valor": [len(df), len(df_direito), f"R$ {df_direito['SomaDeVALOR'].sum():,.2f}"]
+        })
+        resumo.to_excel(writer, index=False, sheet_name='Resumo')
