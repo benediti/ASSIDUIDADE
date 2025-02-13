@@ -9,10 +9,14 @@ def editar_valores_status(df):
     # Filtrar apenas as pessoas que têm direito ao prêmio
     df_direito = df[df['Status'] == 'Tem direito'].copy()
     
-    # Exibir tabela editável
-    edited_df = st.experimental_data_editor(df_direito, num_rows="dynamic")
+    if not df_direito.empty:
+        # Exibir tabela editável
+        edited_df = st.data_editor(df_direito, num_rows="dynamic", key="data_editor")
+        
+        # Atualizar o DataFrame original com as edições
+        df.update(edited_df)
     
-    return edited_df
+    return df
 
 def exportar_novo_excel(df, caminho_arquivo):
     # Filtrar apenas as pessoas que têm direito ao prêmio
