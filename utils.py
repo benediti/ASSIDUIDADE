@@ -16,17 +16,20 @@ def editar_valores_status(df):
             df_direito.at[index, 'Status'] = st.selectbox(
                 "Status",
                 options=["Tem direito", "Não tem direito", "Aguardando decisão"],
-                index=["Tem direito", "Não tem direito", "Aguardando decisão"].index(row['Status'])
+                index=["Tem direito", "Não tem direito", "Aguardando decisão"].index(row['Status']),
+                key=f"status_{index}"
             )
             df_direito.at[index, 'Valor_Premio'] = st.number_input(
                 "Valor do Prêmio",
                 min_value=0.0,
                 value=row['Valor_Premio'],
-                step=50.0
+                step=50.0,
+                key=f"valor_premio_{index}"
             )
             df_direito.at[index, 'Observações'] = st.text_input(
                 "Observações",
-                value=row.get('Observações', '')
+                value=row.get('Observações', ''),
+                key=f"observacoes_{index}"
             )
             st.write("---")
         
