@@ -7,14 +7,31 @@ def editar_valores_status(df):
     st.subheader("Editar Valores e Status")
     
     # Filtrar apenas as pessoas que têm direito ao prêmio
-    df_direito = df[df['Status'] == 'Tem direito'].copy()
+    df_direito = df.copy()
     
     if not df_direito.empty:
-        # Exibir tabela editável
-        edited_df = st.data_editor(df_direito, num_rows="dynamic", key="data_editor")
+        # Configurar colunas editáveis
+        for index, row in df_direito.iterrows():
+            st.write(f"Funcionário: {row['Nome']}")
+            df_direito.at[index, 'Status'] = st.selectbox(
+                "Status",
+                options=["Tem direito", "Não tem direito", "Aguardando decisão"],
+                index=["Tem direito", "Não tem direito", "Aguardando decisão"].index(row['Status'])
+            )
+            df_direito.at[index, 'Valor_Premio'] = st.number_input(
+                "Valor do Prêmio",
+                min_value=0.0,
+                value=row['Valor_Premio'],
+                step=50.0
+            )
+            df_direito.at[index, 'Observações'] = st.text_input(
+                "Observações",
+                value=row.get('Observações', '')
+            )
+            st.write("---")
         
         # Atualizar o DataFrame original com as edições
-        df.update(edited_df)
+        df.update(df_direito)
     
     return df
 
