@@ -7,27 +7,27 @@ def editar_valores_status(df):
     st.subheader("Editar Valores e Status")
     
     # Filtro principal por status
-    status_filter = st.selectbox("Filtrar por Status", options=["Todos", "Tem direito", "Não tem direito", "Aguardando decisão"])
+    status_filter = st.selectbox("Filtrar por Status", options=["Todos", "Tem direito", "Não tem direito", "Aguardando decisão"], key="status_principal_selectbox")
     if status_filter != "Todos":
         df = df[df['Status'].str.contains(status_filter)]
     
     # Filtros de pesquisa
-    matricula_filter = st.text_input("Filtrar por Matrícula")
+    matricula_filter = st.text_input("Filtrar por Matrícula", key="matricula_busca")
     if matricula_filter:
         df = df[df['Matricula'].astype(str).str.contains(matricula_filter)]
     
-    nome_filter = st.text_input("Filtrar por Nome")
+    nome_filter = st.text_input("Filtrar por Nome", key="nome_busca")
     if nome_filter:
         df = df[df['Nome'].str.contains(nome_filter, case=False)]
     
     # Ordenação
-    ordenar_por = st.selectbox("Ordenar por", options=["Nome", "Matricula"])
+    ordenar_por = st.selectbox("Ordenar por", options=["Nome", "Matricula"], key="ordem_selectbox")
     df = df.sort_values(by=ordenar_por)
     
     # Mostrar métricas
-    st.metric("Total de Funcionários no Filtro Atual", len(df))
-    st.metric("Total de Funcionários com Direito no Filtro Atual", len(df[df['Status'].str.contains("Tem direito")]))
-    st.metric("Valor Total dos Prêmios no Filtro Atual", f"R$ {df['Valor_Premio'].sum():,.2f}")
+    st.metric("Total de Funcionários no Filtro Atual", len(df), key="metric_total")
+    st.metric("Total de Funcionários com Direito no Filtro Atual", len(df[df['Status'].str.contains("Tem direito")]), key="metric_direito")
+    st.metric("Valor Total dos Prêmios no Filtro Atual", f"R$ {df['Valor_Premio'].sum():,.2f}", key="metric_valor")
     
     if not df.empty:
         # Configurar colunas editáveis
