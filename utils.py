@@ -65,8 +65,13 @@ def editar_valores_status(df):
     # Editor de dados por linhas individuais
     st.subheader("Editor de Dados")
     
+    # Adicionar chave para controlar qual expansor está aberto
+    if 'expanded_item' not in st.session_state:
+        st.session_state.expanded_item = None
+    
     for idx, row in df_filtrado.iterrows():
-        with st.expander(f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", expanded=False):
+        with st.expander(f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", 
+                        expanded=st.session_state.expanded_item == row['Matricula']):
             col1, col2 = st.columns(2)
             
             with col1:
@@ -98,8 +103,9 @@ def editar_valores_status(df):
                 st.session_state.modified_df.at[idx, 'Status'] = novo_status
                 st.session_state.modified_df.at[idx, 'Valor_Premio'] = novo_valor
                 st.session_state.modified_df.at[idx, 'Observacoes'] = nova_obs
-                st.success("✅ Alterações salvas com sucesso!")
-                st.experimental_rerun()
+                st.session_state.expanded_item = row['Matricula']
+                st.success(f"✅ Alterações salvas com sucesso para {row['Nome']}!")
+                st.rerun()
     
     # Botões de ação geral
     st.subheader("Ações Gerais")
@@ -108,8 +114,9 @@ def editar_valores_status(df):
     with col1:
         if st.button("Reverter Todas as Alterações", key="revert_all_unique"):
             st.session_state.modified_df = df.copy()
+            st.session_state.expanded_item = None
             st.warning("⚠️ Todas as alterações foram revertidas!")
-            st.experimental_rerun()
+            st.rerun()
     
     with col2:
         if st.button("Exportar Arquivo Final", key="export_unique"):
