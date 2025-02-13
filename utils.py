@@ -1,12 +1,27 @@
 import streamlit as st
 import pandas as pd
 
+def salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, nome):
+    """Função auxiliar para salvar alterações"""
+    st.session_state.modified_df.at[idx, 'Status'] = novo_status
+    st.session_state.modified_df.at[idx, 'Valor_Premio'] = novo_valor
+    st.session_state.modified_df.at[idx, 'Observacoes'] = nova_obs
+    st.session_state.expanded_item = idx
+    st.session_state.last_saved = nome
+    st.session_state.show_success = True
+
 def editar_valores_status(df):
     if 'modified_df' not in st.session_state:
         st.session_state.modified_df = df.copy()
+    
+    if 'expanded_item' not in st.session_state:
+        st.session_state.expanded_item = None
         
-    if 'edited_rows' not in st.session_state:
-        st.session_state.edited_rows = {}
+    if 'show_success' not in st.session_state:
+        st.session_state.show_success = False
+        
+    if 'last_saved' not in st.session_state:
+        st.session_state.last_saved = None
     
     st.subheader("Filtro Principal")
     
@@ -21,7 +36,7 @@ def editar_valores_status(df):
     
     df_filtrado = st.session_state.modified_df.copy()
     if status_principal != "Todos":
-        df_filtrado = df_filtrado[df_filtrado['Status'].str.contains(status_principal)]
+        df_filtrado = df_filtrado[df_filtrado['Status'] == status_principal]
     
     st.subheader("Buscar Funcionários")
     col1, col2, col3 = st.columns(3)
@@ -58,20 +73,23 @@ def editar_valores_status(df):
     with col1:
         st.metric("Funcionários exibidos", len(df_filtrado))
     with col2:
-        st.metric("Total com direito", len(df_filtrado[df_filtrado['Status'].str.contains('Tem direito')]))
+        st.metric("Total com direito", len(df_filtrado[df_filtrado['Status'] == 'Tem direito']))
     with col3:
         st.metric("Valor total dos prêmios", f"R$ {df_filtrado['Valor_Premio'].sum():,.2f}")
+    
+    # Mostrar mensagem de sucesso se houver
+    if st.session_state.show_success:
+        st.success(f"✅ Alterações salvas com sucesso para {st.session_state.last_saved}!")
+        st.session_state.show_success = False
     
     # Editor de dados por linhas individuais
     st.subheader("Editor de Dados")
     
-    # Adicionar chave para controlar qual expansor está aberto
-    if 'expanded_item' not in st.session_state:
-        st.session_state.expanded_item = None
-    
     for idx, row in df_filtrado.iterrows():
-        with st.expander(f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", 
-                        expanded=st.session_state.expanded_item == row['Matricula']):
+        with st.expander(
+            f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", 
+            expanded=st.session_state.expanded_item == idx
+        ):
             col1, col2 = st.columns(2)
             
             with col1:
@@ -79,7 +97,7 @@ def editar_valores_status(df):
                     "Status",
                     options=status_options[1:],
                     index=status_options[1:].index(row['Status']) if row['Status'] in status_options[1:] else 0,
-                    key=f"status_{row['Matricula']}"
+                    key=f"status_{idx}_{row['Matricula']}"
                 )
                 
                 novo_valor = st.number_input(
@@ -89,23 +107,18 @@ def editar_valores_status(df):
                     value=float(row['Valor_Premio']),
                     step=50.0,
                     format="%.2f",
-                    key=f"valor_{row['Matricula']}"
+                    key=f"valor_{idx}_{row['Matricula']}"
                 )
             
             with col2:
                 nova_obs = st.text_area(
                     "Observações",
                     value=row.get('Observacoes', ''),
-                    key=f"obs_{row['Matricula']}"
+                    key=f"obs_{idx}_{row['Matricula']}"
                 )
             
-            if st.button("Salvar Alterações", key=f"save_{row['Matricula']}"):
-                st.session_state.modified_df.at[idx, 'Status'] = novo_status
-                st.session_state.modified_df.at[idx, 'Valor_Premio'] = novo_valor
-                st.session_state.modified_df.at[idx, 'Observacoes'] = nova_obs
-                st.session_state.expanded_item = row['Matricula']
-                st.success(f"✅ Alterações salvas com sucesso para {row['Nome']}!")
-                st.rerun()
+            if st.button("Salvar Alterações", key=f"save_{idx}_{row['Matricula']}"):
+                salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, row['Nome'])
     
     # Botões de ação geral
     st.subheader("Ações Gerais")
@@ -115,8 +128,8 @@ def editar_valores_status(df):
         if st.button("Reverter Todas as Alterações", key="revert_all_unique"):
             st.session_state.modified_df = df.copy()
             st.session_state.expanded_item = None
+            st.session_state.show_success = False
             st.warning("⚠️ Todas as alterações foram revertidas!")
-            st.rerun()
     
     with col2:
         if st.button("Exportar Arquivo Final", key="export_unique"):
