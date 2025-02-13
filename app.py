@@ -140,7 +140,8 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
             'Data_Admissao': func['Data_Admissao'],
             'Valor_Premio': valor_premio if status == "Tem direito" else 0,
             'Status': f"{status} (Total Atrasos: {total_atrasos})" if status == "Aguardando decisão" and total_atrasos else status,
-            'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else ''
+            'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else '',
+            'Observações': ''
         })
     
     return pd.DataFrame(resultados)
@@ -237,6 +238,20 @@ def main():
             
             # Editar resultados
             df_mostrar = editar_valores_status(df_mostrar)
+            
+            # Mostrar métricas
+            st.metric("Total de Funcionários com Direito", len(df_mostrar[df_mostrar['Status'] == "Tem direito"]))
+            st.metric("Total de Funcionários sem Direito", len(df_mostrar[df_mostrar['Status'] == "Não tem direito"]))
+            st.metric("Valor Total dos Prêmios", f"R$ {df_mostrar['Valor_Premio'].sum():,.2f}")
+            
+            # Filtros
+            status_filter = st.selectbox("Filtrar por Status", options=["Todos", "Tem direito", "Não tem direito", "Aguardando decisão"])
+            if status_filter != "Todos":
+                df_mostrar = df_mostrar[df_mostrar['Status'] == status_filter]
+            
+            nome_filter = st.text_input("Filtrar por Nome")
+            if nome_filter:
+                df_mostrar = df_mostrar[df_mostrar['Nome'].str.contains(nome_filter, case=False)]
             
             # Mostrar tabela de resultados na interface
             st.dataframe(df_mostrar)
