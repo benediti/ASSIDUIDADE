@@ -72,6 +72,18 @@ def carregar_arquivo_funcionarios(uploaded_file):
         # Lê o arquivo Excel
         df = pd.read_excel(uploaded_file)
         
+        # Exibe informações de debug sobre a coluna de salário
+        if 'Salário Mês Atual' in df.columns:
+            # Mostra informações sobre os tipos e valores da coluna de salário
+            st.write("### Informações sobre a coluna de salário")
+            st.write(f"Tipo da coluna: {df['Salário Mês Atual'].dtype}")
+            
+            # Amostra de valores
+            st.write("Amostra de valores de salário:")
+            amostra = df['Salário Mês Atual'].head(5).tolist()
+            for i, valor in enumerate(amostra):
+                st.write(f"Valor {i+1}: {valor} (tipo: {type(valor)})")
+        
         # Converte as colunas de data
         if 'Data Término Contrato' in df.columns:
             df['Data Término Contrato'] = df['Data Término Contrato'].astype(str)
@@ -218,7 +230,7 @@ def aplicar_regras_pagamento(df):
     """
     Aplica as regras de cálculo de pagamento conforme os critérios especificados.
     
-    Regras corrigidas:
+    Regras:
     - Apenas funcionários com salário abaixo de R$ 2.542,86 têm direito a receber
     - Se tem falta -> 0,00 (vermelho)
     - Se tem afastamento -> 0,00 (vermelho)
@@ -233,39 +245,61 @@ def aplicar_regras_pagamento(df):
     df['Cor'] = ''
     df['Observacoes'] = ''  # Adiciona coluna de observações
     
+    # Cria uma tabela de depuração para exibir valores processados de salário
+    debug_data = []
+    
     # Processa cada linha
     for idx, row in df.iterrows():
-        # Verifica salário - FUNÇÃO CORRIGIDA
+        # Verifica salário - FUNÇÃO MELHORADA
         salario = 0
-        if 'Salário Mês Atual' in df.columns:
-            try:
-                # Obtém o valor do salário
-                salario_str = str(row['Salário Mês Atual'])
-                
-                # Verifica se o valor já está no formato numérico
-                if isinstance(row['Salário Mês Atual'], (int, float)):
-                    salario = float(row['Salário Mês Atual'])
-                else:
-                    # Remove caracteres não numéricos, exceto ponto decimal
-                    # Primeiro remove R$ e espaços
-                    salario_limpo = salario_str.replace('R$', '').replace(' ', '')
-                    
-                    # Usa ponto como separador decimal (já está assim na planilha)
-                    salario = float(salario_limpo)
-                    
-                # Imprimir para debug
-                # print(f"Matrícula: {row.get('Matricula', 'N/A')}, Nome: {row.get('Nome', 'N/A')}, Salário original: {salario_str}, Salário convertido: {salario}")
-                
-            except (ValueError, TypeError) as e:
-                # Imprimir para debug
-                # print(f"Erro ao converter salário: {e}, valor original: {row.get('Salário Mês Atual', 'N/A')}")
-                salario = 0
+        salario_original = row.get('Salário Mês Atual', None)
+        
+        try:
+            # Tenta converter direto se for um tipo numérico
+            if isinstance(salario_original, (int, float)):
+                salario = float(salario_original)
+            # Caso seja string, limpa e converte
+            elif isinstance(salario_original, str):
+                salario_str = salario_original
+                # Remove R$ e espaços se existirem
+                salario_limpo = salario_str.replace('R$', '').replace(' ', '')
+                # Se usa vírgula como separador decimal, converte para ponto
+                if ',' in salario_limpo and '.' not in salario_limpo:
+                    salario_limpo = salario_limpo.replace(',', '.')
+                # Converte para float
+                salario = float(salario_limpo)
+            
+            # Debug information
+            debug_item = {
+                'Matricula': row.get('Matrícula', '') or row.get('Matricula', ''),
+                'Nome': row.get('Nome Funcionário', '') or row.get('Nome', ''),
+                'Salario_Original': salario_original,
+                'Salario_Tipo': type(salario_original).__name__,
+                'Salario_Convertido': salario
+            }
+            debug_data.append(debug_item)
+            
+        except (ValueError, TypeError) as e:
+            # Se ocorrer erro na conversão, registra para debug
+            debug_item = {
+                'Matricula': row.get('Matrícula', '') or row.get('Matricula', ''),
+                'Nome': row.get('Nome Funcionário', '') or row.get('Nome', ''),
+                'Salario_Original': salario_original,
+                'Salario_Tipo': type(salario_original).__name__,
+                'Erro': str(e)
+            }
+            debug_data.append(debug_item)
+            salario = 0
         
         # Verifica horas
         horas = 0
         if 'Qtd Horas Mensais' in df.columns:
             try:
-                horas = float(row['Qtd Horas Mensais'])
+                horas_valor = row['Qtd Horas Mensais']
+                if isinstance(horas_valor, (int, float)):
+                    horas = float(horas_valor)
+                elif isinstance(horas_valor, str) and horas_valor.strip():
+                    horas = float(horas_valor.strip())
             except (ValueError, TypeError):
                 horas = 0
         
@@ -311,7 +345,21 @@ def aplicar_regras_pagamento(df):
                 df.at[idx, 'Valor a Pagar'] = 0.00
                 df.at[idx, 'Status'] = 'Aguardando decisão'
                 df.at[idx, 'Cor'] = ''
-                df.at[idx, 'Observacoes'] = 'Verificar horas trabalhadas'
+                df.at[idx, 'Observacoes'] = f'Verificar horas: {horas}'
+    
+    # Exibe a tabela de depuração de salários
+    st.write("### Debug: Conversão de Salários")
+    df_debug = pd.DataFrame(debug_data)
+    if not df_debug.empty:
+        st.dataframe(df_debug.head(10))  # Mostra apenas as primeiras 10 linhas para não sobrecarregar a UI
+        
+        # Mostra estatísticas de salários
+        salarios_acima_limite = sum(1 for item in debug_data if item.get('Salario_Convertido', 0) >= 2542.86)
+        salarios_abaixo_limite = sum(1 for item in debug_data if item.get('Salario_Convertido', 0) < 2542.86)
+        
+        st.write(f"Total de registros: {len(debug_data)}")
+        st.write(f"Salários acima do limite (≥ R$2.542,86): {salarios_acima_limite}")
+        st.write(f"Salários abaixo do limite (< R$2.542,86): {salarios_abaixo_limite}")
     
     # Renomeia colunas para compatibilidade com utils.py
     df = df.rename(columns={
@@ -447,194 +495,4 @@ def editar_valores_status(df):
     elif ordem == "Matrícula (Decrescente)":
         df_filtrado = df_filtrado.sort_values('Matricula', ascending=False)
     
-    # Métricas
-    st.subheader("Métricas do Filtro Atual")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Funcionários exibidos", len(df_filtrado))
-    with col2:
-        st.metric("Total com direito", len(df_filtrado[df_filtrado['Status'] == 'Tem direito']))
-    with col3:
-        st.metric("Valor total dos prêmios", f"R$ {df_filtrado['Valor_Premio'].sum():,.2f}")
-    
-    # Mostrar mensagem de sucesso se houver
-    if st.session_state.show_success:
-        st.success(f"✅ Alterações salvas com sucesso para {st.session_state.last_saved}!")
-        st.session_state.show_success = False
-    
-    # Editor de dados por linhas individuais
-    st.subheader("Editor de Dados")
-    
-    for idx, row in df_filtrado.iterrows():
-        with st.expander(
-            f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", 
-            expanded=st.session_state.expanded_item == idx
-        ):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                novo_status = st.selectbox(
-                    "Status",
-                    options=status_options[1:],
-                    index=status_options[1:].index(row['Status']) if row['Status'] in status_options[1:] else 0,
-                    key=f"status_{idx}_{row['Matricula']}"
-                )
-                
-                novo_valor = st.number_input(
-                    "Valor do Prêmio",
-                    min_value=0.0,
-                    max_value=1000.0,
-                    value=float(row['Valor_Premio']),
-                    step=50.0,
-                    format="%.2f",
-                    key=f"valor_{idx}_{row['Matricula']}"
-                )
-            
-            with col2:
-                nova_obs = st.text_area(
-                    "Observações",
-                    value=row.get('Observacoes', ''),
-                    key=f"obs_{idx}_{row['Matricula']}"
-                )
-            
-            if st.button("Salvar Alterações", key=f"save_{idx}_{row['Matricula']}"):
-                salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, row['Nome'])
-    
-    # Botões de ação geral
-    st.subheader("Ações Gerais")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("Reverter Todas as Alterações", key="revert_all_unique"):
-            st.session_state.modified_df = df.copy()
-            st.session_state.expanded_item = None
-            st.session_state.show_success = False
-            st.warning("⚠️ Todas as alterações foram revertidas!")
-    
-    with col2:
-        if st.button("Exportar Arquivo Final", key="export_unique"):
-            output = exportar_novo_excel(st.session_state.modified_df)
-            st.download_button(
-                label="📥 Baixar Arquivo Excel",
-                data=output,
-                file_name="funcionarios_premios.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_unique"
-            )
-    
-    return st.session_state.modified_df
-
-# Interface Streamlit
-st.sidebar.header("Upload de Arquivos")
-
-# Upload dos arquivos Excel
-arquivo_ausencias = st.sidebar.file_uploader("Arquivo de Ausências", type=["xlsx", "xls"])
-arquivo_funcionarios = st.sidebar.file_uploader("Arquivo de Funcionários", type=["xlsx", "xls"])
-arquivo_afastamentos = st.sidebar.file_uploader("Arquivo de Afastamentos (opcional)", type=["xlsx", "xls"])
-
-# Data limite de admissão
-st.sidebar.header("Data Limite de Admissão")
-data_limite = st.sidebar.date_input(
-    "Considerar apenas funcionários admitidos até:",
-    value=datetime(2025, 3, 1),
-    format="DD/MM/YYYY"
-)
-
-# Tabs para diferenciar processamento e edição
-tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
-
-with tab1:
-    # Botão para processar
-    processar = st.button("Processar Dados")
-
-    # Processamento
-    if processar:
-        if arquivo_ausencias is not None and arquivo_funcionarios is not None:
-            with st.spinner("Processando arquivos..."):
-                # Carrega os dados
-                df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
-                df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
-                df_afastamentos = carregar_arquivo_afastamentos(arquivo_afastamentos)
-                
-                # Converte data limite para string no formato brasileiro
-                data_limite_str = data_limite.strftime("%d/%m/%Y")
-                
-                # Processa os dados sem filtro de mês
-                resultado = processar_dados(
-                    df_ausencias, 
-                    df_funcionarios, 
-                    df_afastamentos,
-                    data_limite_admissao=data_limite_str
-                )
-                
-                if not resultado.empty:
-                    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    
-                    # Guardamos o resultado no session_state para a tab de edição
-                    st.session_state.resultado_processado = resultado
-                    
-                    # Colunas a serem removidas da exibição
-                    colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência']
-                    
-                    # Criando uma cópia do DataFrame para exibição, mantendo a coluna 'Cor'
-                    df_exibir = resultado.drop(columns=[col for col in colunas_esconder if col in resultado.columns])
-                    
-                    # Função de highlight baseada na coluna 'Cor' que ainda está presente
-                    def highlight_row(row):
-                        cor = row['Cor']
-                        if cor == 'vermelho':
-                            return ['background-color: #FFCCCC'] * len(row)
-                        elif cor == 'verde':
-                            return ['background-color: #CCFFCC'] * len(row)
-                        elif cor == 'azul':
-                            return ['background-color: #CCCCFF'] * len(row)
-                        else:
-                            return [''] * len(row)
-                    
-                    # Exibe os resultados com a coluna 'Cor' ainda presente para formatação
-                    st.subheader("Resultados Preliminares")
-                    st.dataframe(df_exibir.style.apply(highlight_row, axis=1))
-                    
-                    # Resumo de valores
-                    total_a_pagar = df_exibir['Valor_Premio'].sum()
-                    contagem_por_status = df_exibir['Status'].value_counts()
-                    
-                    st.subheader("Resumo")
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
-                    
-                    with col2:
-                        st.write("Contagem por Status:")
-                        st.write(contagem_por_status)
-                    
-                    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
-                else:
-                    st.warning("Nenhum resultado encontrado.")
-        else:
-            st.warning("Por favor, faça o upload dos arquivos necessários.")
-
-with tab2:
-    if 'resultado_processado' in st.session_state:
-        # Usa a função editar_valores_status do utils.py
-        df_final = editar_valores_status(st.session_state.resultado_processado)
-    else:
-        st.info("Por favor, primeiro processe os dados na aba 'Processamento Inicial'.")
-
-# Exibe informações de uso
-st.sidebar.markdown("---")
-st.sidebar.info("""
-**Como usar:**
-1. Faça o upload dos arquivos necessários
-2. Defina a data limite de admissão
-3. Na aba 'Processamento Inicial', clique em 'Processar Dados'
-4. Na aba 'Edição e Exportação', revise e ajuste os valores individuais
-5. Exporte o resultado final usando o botão 'Exportar Arquivo Final'
-
-**Regras de pagamento:**
-- Funcionários com salário acima de R$ 2.542,86 não têm direito
-- Faltas e afastamentos bloqueiam o pagamento
-- Ausências necessitam avaliação
-- Pagamentos: 220h = R$300,00, 110/120h = R$150,00
-""")
+    #
