@@ -416,29 +416,34 @@ if processar:
             if not resultado.empty:
                 st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
                 
-                # Estiliza o DataFrame para exibição
+                # Colunas a serem removidas da exibição
+                colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência']
+                
+                # Criando uma cópia do DataFrame para exibição, mantendo a coluna 'Cor'
+                df_exibir = resultado.drop(columns=[col for col in colunas_esconder if col in resultado.columns])
+                
+                # Função de highlight baseada na coluna 'Cor' que ainda está presente
                 def highlight_row(row):
-                    if row['Cor'] == 'vermelho':
+                    cor = row['Cor']
+                    if cor == 'vermelho':
                         return ['background-color: #FFCCCC'] * len(row)
-                    elif row['Cor'] == 'verde':
+                    elif cor == 'verde':
                         return ['background-color: #CCFFCC'] * len(row)
-                    elif row['Cor'] == 'azul':
+                    elif cor == 'azul':
                         return ['background-color: #CCCCFF'] * len(row)
                     else:
                         return [''] * len(row)
                 
-                # Remove colunas auxiliares antes de exibir
-                colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência', 'Cor']
-                colunas_exibir = [c for c in resultado.columns if c not in colunas_esconder]
-                df_exibir = resultado[colunas_exibir].copy()
-                
-                # Exibe os resultados
+                # Exibe os resultados com a coluna 'Cor' ainda presente para formatação
                 st.subheader("Resultados")
                 st.dataframe(df_exibir.style.apply(highlight_row, axis=1))
                 
+                # Agora remove a coluna 'Cor' para downloads
+                df_download = df_exibir.drop(columns=['Cor'])
+                
                 # Resumo de valores
-                total_a_pagar = df_exibir['Valor a Pagar'].sum()
-                contagem_por_status = df_exibir['Status'].value_counts()
+                total_a_pagar = df_download['Valor a Pagar'].sum()
+                contagem_por_status = df_download['Status'].value_counts()
                 
                 st.subheader("Resumo")
                 col1, col2 = st.columns(2)
@@ -451,7 +456,7 @@ if processar:
                     st.write(contagem_por_status)
                 
                 # Botão para download CSV
-                csv = df_exibir.to_csv(index=False).encode('utf-8')
+                csv = df_download.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download CSV",
                     data=csv,
@@ -460,7 +465,7 @@ if processar:
                 )
                 
                 # Preparar dados para Excel (limpar valores problemáticos)
-                df_excel = preparar_para_excel(df_exibir)
+                df_excel = preparar_para_excel(df_download)
                 
                 # Botão para download do Excel - VERSÃO CORRIGIDA
                 buffer = BytesIO()
@@ -476,9 +481,9 @@ if processar:
                     formato_verde = workbook.add_format({'bg_color': '#CCFFCC'})
                     formato_azul = workbook.add_format({'bg_color': '#CCCCFF'})
                     
-                    # Métodos alternativos para aplicar formatação condicional
-                    for i, row in df_excel.iterrows():
-                        cor = resultado.iloc[i]['Cor'] if 'Cor' in resultado.columns else ''
+                    # Aplica formatação com base na coluna 'Cor' do DataFrame original
+                    for i, idx in enumerate(df_download.index):
+                        cor = resultado.loc[idx, 'Cor'] if 'Cor' in resultado.columns else ''
                         if cor == 'vermelho':
                             formato = formato_vermelho
                         elif cor == 'verde':
