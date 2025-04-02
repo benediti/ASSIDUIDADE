@@ -114,57 +114,39 @@ def carregar_arquivo_afastamentos(uploaded_file):
         return pd.DataFrame()
 
 def consolidar_dados_funcionario(df_combinado):
-    """
-    Consolida os dados para que cada funcionário apareça apenas uma vez no relatório.
-    """
     if df_combinado.empty:
         return df_combinado
-    
-    # Verifica colunas necessárias
-    colunas_funcionario = ['Matrícula', 'Nome Funcionário', 'Cargo', 'Qtd Horas Mensais', 
-                          'Salário Mês Atual', 'Data Admissão', 'Nome Local', 'Tipo Contrato']
-    
-    # Lista para guardar os dados consolidados
+
     dados_consolidados = []
     
-    # Agrupa por matrícula para processar cada funcionário individualmente
+    # Agrupa por matrícula para que cada funcionário apareça uma vez
     for matricula, grupo in df_combinado.groupby('Matrícula'):
-        # Pega os dados básicos do funcionário (mesmos para todas as ocorrências)
+        # Pega a primeira linha (contendo todas as informações, inclusive da tabela de ausências)
         funcionario = grupo.iloc[0].copy()
         
-        # Verifica se tem faltas
+        # Verifica se há ausência, falta ou afastamento em qualquer registro do grupo
         tem_falta = False
         if 'Falta' in df_combinado.columns:
             tem_falta = grupo['Falta'].notna().any()
         
-        # Verifica se tem afastamentos
         tem_afastamento = False
         if 'Afastamentos' in df_combinado.columns:
             tem_afastamento = grupo['Afastamentos'].notna().any()
         
-        # Verifica se tem ausências
         tem_ausencia = False
-        if 'Ausência Integral' in df_combinado.columns and 'Ausência Parcial' in df_combinado.columns:
+        if ('Ausência Integral' in df_combinado.columns) and ('Ausência Parcial' in df_combinado.columns):
             tem_ausencia = grupo['Ausência Integral'].notna().any() or grupo['Ausência Parcial'].notna().any()
         
-        # Cria uma nova linha para o funcionário
-        nova_linha = pd.Series({
-            'Tem Falta': tem_falta,
-            'Tem Afastamento': tem_afastamento,
-            'Tem Ausência': tem_ausencia
-        })
+        # Acrescenta as colunas auxiliares
+        funcionario['Tem Falta'] = tem_falta
+        funcionario['Tem Afastamento'] = tem_afastamento
+        funcionario['Tem Ausência'] = tem_ausencia
         
-        # Adiciona os dados do funcionário
-        for coluna in colunas_funcionario:
-            if coluna in funcionario.index:
-                nova_linha[coluna] = funcionario[coluna]
-        
-        dados_consolidados.append(nova_linha)
+        dados_consolidados.append(funcionario)
     
-    # Cria o DataFrame consolidado
     df_consolidado = pd.DataFrame(dados_consolidados)
-    
     return df_consolidado
+
 
 def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=None):
     """
@@ -411,11 +393,15 @@ def aplicar_regras_pagamento(df):
 def exportar_novo_excel(df):
     output = BytesIO()
     
-    # Definir as colunas para exportação
-    colunas_exportar = ['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']
-    for coluna in ['Cargo', 'Salário Mês Atual', 'Qtd Horas Mensais']:
+    # Define as colunas adicionais: além das que já temos, inclua as da ausências
+    colunas_adicionais = []
+    for coluna in ['Cargo', 'Salário Mês Atual', 'Qtd Horas Mensais', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']:
         if coluna in df.columns:
-            colunas_exportar.insert(0, coluna)
+            colunas_adicionais.append(coluna)
+    
+    # Colunas principais que queremos sempre incluir
+    colunas_principais = ['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']
+    colunas_exportar = colunas_adicionais + colunas_principais
     
     # Filtrar os DataFrames para cada status
     df_tem_direito = df[df['Status'] == 'Tem direito'][colunas_exportar]
