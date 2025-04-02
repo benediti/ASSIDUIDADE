@@ -101,40 +101,6 @@ def carregar_arquivo_afastamentos(uploaded_file):
         st.error(f"Erro ao carregar arquivo de afastamentos: {e}")
         return pd.DataFrame()
 
-def filtrar_ausencias_por_periodo(df_ausencias, data_inicio, data_fim):
-    """
-    Filtra ausências para um determinado período.
-    """
-    # Converte data_inicio e data_fim para datetime se forem strings
-    if isinstance(data_inicio, str):
-        data_inicio = converter_data_br_para_datetime(data_inicio)
-    if isinstance(data_fim, str):
-        data_fim = converter_data_br_para_datetime(data_fim)
-    
-    # Verifica se a conversão ocorreu com sucesso
-    if data_inicio is None or data_fim is None:
-        st.error("Erro: formato de data inválido.")
-        return pd.DataFrame()
-    
-    # Filtra as ausências dentro do período
-    try:
-        # Primeiro verifica se a coluna Dia existe e tem valores válidos
-        if 'Dia' not in df_ausencias.columns or df_ausencias['Dia'].isna().all():
-            st.error("Erro ao filtrar ausências por período: 'Dia'")
-            return df_ausencias
-        
-        # Filtra apenas registros com data válida
-        df_com_data = df_ausencias.dropna(subset=['Dia'])
-        
-        ausencias_periodo = df_com_data[
-            (df_com_data['Dia'] >= data_inicio) & 
-            (df_com_data['Dia'] <= data_fim)
-        ]
-        return ausencias_periodo
-    except Exception as e:
-        st.error(f"Erro ao filtrar ausências por período: {e}")
-        return df_ausencias
-
 def consolidar_dados_funcionario(df_combinado):
     """
     Consolida os dados para que cada funcionário apareça apenas uma vez no relatório.
@@ -188,9 +154,9 @@ def consolidar_dados_funcionario(df_combinado):
     
     return df_consolidado
 
-def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, mes=None, ano=None, data_limite_admissao=None):
+def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=None):
     """
-    Processa os dados de ambos os arquivos com tratamento correto de datas.
+    Processa os dados sem filtro de mês.
     """
     if df_ausencias.empty or df_funcionarios.empty:
         st.warning("Um ou mais arquivos não puderam ser carregados corretamente.")
@@ -207,18 +173,6 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, mes=None, an
         df_funcionarios = df_funcionarios[
             df_funcionarios['Data Admissão'] <= data_limite
         ]
-    
-    # Se mês e ano forem fornecidos, filtra para esse período
-    if mes is not None and ano is not None:
-        # Determine o primeiro e último dia do mês
-        primeiro_dia = datetime(ano, mes, 1)
-        if mes == 12:
-            ultimo_dia = datetime(ano + 1, 1, 1) - timedelta(days=1)
-        else:
-            ultimo_dia = datetime(ano, mes + 1, 1) - timedelta(days=1)
-        
-        # Filtra as ausências para o mês/ano especificado
-        df_ausencias = filtrar_ausencias_por_periodo(df_ausencias, primeiro_dia, ultimo_dia)
     
     # Mescla os dados de ausências com os dados de funcionários
     # Usando a "Matricula" como chave de junção
@@ -371,15 +325,6 @@ arquivo_ausencias = st.sidebar.file_uploader("Arquivo de Ausências", type=["xls
 arquivo_funcionarios = st.sidebar.file_uploader("Arquivo de Funcionários", type=["xlsx", "xls"])
 arquivo_afastamentos = st.sidebar.file_uploader("Arquivo de Afastamentos (opcional)", type=["xlsx", "xls"])
 
-# Seleção de período
-st.sidebar.header("Filtrar por Período")
-meses = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 
-         6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 
-         10: "Outubro", 11: "Novembro", 12: "Dezembro"}
-
-mes_selecionado = st.sidebar.selectbox("Mês", options=list(meses.keys()), format_func=lambda x: meses[x])
-ano_selecionado = st.sidebar.number_input("Ano", min_value=2020, max_value=2030, value=2025)
-
 # Data limite de admissão
 st.sidebar.header("Data Limite de Admissão")
 data_limite = st.sidebar.date_input(
@@ -403,13 +348,11 @@ if processar:
             # Converte data limite para string no formato brasileiro
             data_limite_str = data_limite.strftime("%d/%m/%Y")
             
-            # Processa os dados
+            # Processa os dados sem filtro de mês
             resultado = processar_dados(
                 df_ausencias, 
                 df_funcionarios, 
                 df_afastamentos,
-                mes=mes_selecionado, 
-                ano=ano_selecionado,
                 data_limite_admissao=data_limite_str
             )
             
@@ -455,19 +398,22 @@ if processar:
                     st.write("Contagem por Status:")
                     st.write(contagem_por_status)
                 
+                # Data atual para o nome do arquivo
+                data_atual = datetime.now().strftime("%d-%m-%Y")
+                
                 # Botão para download CSV
                 csv = df_download.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download CSV",
                     data=csv,
-                    file_name=f"resultado_ausencias_{meses[mes_selecionado]}_{ano_selecionado}.csv",
+                    file_name=f"resultado_ausencias_{data_atual}.csv",
                     mime="text/csv"
                 )
                 
                 # Preparar dados para Excel (limpar valores problemáticos)
                 df_excel = preparar_para_excel(df_download)
                 
-                # Botão para download do Excel - VERSÃO CORRIGIDA
+                # Botão para download do Excel
                 buffer = BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     df_excel.to_excel(writer, index=False, sheet_name='Resultado')
@@ -496,7 +442,13 @@ if processar:
                         # Aplica o formato a toda a linha
                         for j in range(len(df_excel.columns)):
                             # Use formato básico para todos os valores
-                            worksheet.write(i+1, j, str(df_excel.iloc[i, j]), formato)
+                            value = df_excel.iloc[i, j]
+                            # Convertendo para string para evitar problemas com tipos de dados
+                            if pd.isna(value) or value is None:
+                                value = ""
+                            else:
+                                value = str(value)
+                            worksheet.write(i+1, j, value, formato)
                 
                 # Move o cursor para o início do buffer
                 buffer.seek(0)
@@ -505,7 +457,7 @@ if processar:
                 st.download_button(
                     label="Download Excel",
                     data=buffer,
-                    file_name=f"resultado_ausencias_{meses[mes_selecionado]}_{ano_selecionado}.xlsx",
+                    file_name=f"resultado_ausencias_{data_atual}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
@@ -521,9 +473,8 @@ st.sidebar.info("""
 2. Faça o upload do arquivo de funcionários
 3. Faça o upload do arquivo de afastamentos (opcional)
 4. Defina a data limite de admissão
-5. Selecione o mês e ano desejados
-6. Clique em "Processar Dados"
-7. Veja os resultados e faça o download se necessário
+5. Clique em "Processar Dados"
+6. Veja os resultados e faça o download se necessário
 
 **Regras de pagamento:**
 - Vermelho: Não paga (0,00)
