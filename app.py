@@ -239,6 +239,8 @@ def aplicar_regras_pagamento(df):
     - Se horas = 110 ou 120 -> R$ 150,00 (verde)
     - Quem não tem nada na tabela de ausências e está dentro do filtro de salário 
       e data de admissão tem direito.
+    - Funções específicas sem direito: AUX DE SERV GERAIS (INT), AUX DE LIMPEZA (INT),
+      LIMPADOR DE VIDROS INT, RECEPCIONISTA INTERMITENTE, PORTEIRO INTERMITENTE
     
     Regras de afastamentos:
     - Tem direito: Abonado Gerencia Loja, Abono Administrativo
@@ -254,6 +256,15 @@ def aplicar_regras_pagamento(df):
     df['Status'] = ''
     df['Cor'] = ''
     df['Observacoes'] = ''  # Adiciona coluna de observações
+    
+    # Funções que não têm direito ao pagamento
+    funcoes_sem_direito = [
+        'AUX DE SERV GERAIS (INT)', 
+        'AUX DE LIMPEZA (INT)',
+        'LIMPADOR DE VIDROS INT', 
+        'RECEPCIONISTA INTERMITENTE', 
+        'PORTEIRO INTERMITENTE'
+    ]
     
     # Define os tipos de afastamento e seus direitos
     afastamentos_com_direito = [
@@ -288,6 +299,16 @@ def aplicar_regras_pagamento(df):
     
     # Processa cada linha
     for idx, row in df.iterrows():
+        # Verifica função do funcionário
+        funcao_sem_direito = False
+        funcao = ''
+        
+        # Verifica o campo de função/cargo
+        if 'Cargo' in df.columns and not pd.isna(row['Cargo']):
+            funcao = str(row['Cargo']).strip()
+            if funcao in funcoes_sem_direito:
+                funcao_sem_direito = True
+        
         # Verifica salário
         salario = 0
         salario_original = row.get('Salário Mês Atual', 0)
@@ -366,7 +387,12 @@ def aplicar_regras_pagamento(df):
             tem_ausencia_falta_afastamento = True
         
         # Aplicar regras na ordem correta
-        if salario >= 2542.86:
+        if funcao_sem_direito:
+            df.at[idx, 'Valor a Pagar'] = 0.00
+            df.at[idx, 'Status'] = 'Não tem direito'
+            df.at[idx, 'Cor'] = 'vermelho'
+            df.at[idx, 'Observacoes'] = f'Função sem direito: {funcao}'
+        elif salario >= 2542.86:
             df.at[idx, 'Valor a Pagar'] = 0.00
             df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
@@ -454,51 +480,96 @@ def aplicar_regras_pagamento(df):
     
     return df
 
-# Função para converter ou limpar valores para exportação
-def preparar_para_excel(df):
-    """
-    Prepara o DataFrame para exportação para Excel, 
-    convertendo datas para strings e limpando valores problemáticos.
-    """
-    df_limpo = df.copy()
-    
-    # Converte datas para strings
-    for coluna in df_limpo.columns:
-        # Identifica colunas com datas
-        if df_limpo[coluna].dtype == 'datetime64[ns]' or 'datetime' in str(df_limpo[coluna].dtype):
-            # Converte para string no formato DD/MM/YYYY
-            df_limpo[coluna] = df_limpo[coluna].apply(
-                lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) and not pd.isna(x) else ''
-            )
-        
-        # Trata valores NaT, NaN e None
-        df_limpo[coluna] = df_limpo[coluna].apply(
-            lambda x: '' if pd.isna(x) or x is None or (isinstance(x, float) and np.isnan(x)) else x
-        )
-    
-    return df_limpo
-
 def exportar_novo_excel(df):
     """
-    Exporta o DataFrame para Excel com formatação adequada.
-    Função baseada no utils.py.
+    Exporta o DataFrame para Excel com todas as categorias (tem direito, não tem direito, aguardando decisão).
+    Cada categoria estará em uma aba separada.
     """
     output = BytesIO()
     
-    df_direito = df[df['Status'].str.contains('Tem direito')].copy()
-    df_exportar = df_direito[['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']]
+    # Separa os dados por status
+    df_tem_direito = df[df['Status'] == 'Tem direito'].copy()
+    df_nao_tem_direito = df[df['Status'] == 'Não tem direito'].copy()
+    df_aguardando = df[df['Status'] == 'Aguardando decisão'].copy()
+    
+    # Colunas comuns para exportação
+    colunas_exportar = ['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']
+    
+    # Verifica se existem outras colunas importantes (Cargo, Salário, etc.)
+    colunas_adicionais = []
+    for coluna in ['Cargo', 'Salário Mês Atual', 'Qtd Horas Mensais']:
+        if coluna in df.columns:
+            colunas_adicionais.append(coluna)
+    
+    # Adiciona as colunas adicionais às colunas de exportação
+    colunas_exportar = colunas_adicionais + colunas_exportar
     
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_exportar.to_excel(writer, index=False, sheet_name='Funcionários com Direito')
+        # Aba 1: Funcionários com direito
+        if not df_tem_direito.empty:
+            df_tem_direito[colunas_exportar].to_excel(
+                writer, 
+                index=False, 
+                sheet_name='Com Direito'
+            )
+            
+            # Formatação para a aba
+            workbook = writer.book
+            worksheet = writer.sheets['Com Direito']
+            format_green = workbook.add_format({'bg_color': '#CCFFCC'})
+            
+            # Aplica formatação verde
+            for i in range(len(df_tem_direito)):
+                for j in range(len(colunas_exportar)):
+                    worksheet.write(i+1, j, str(df_tem_direito.iloc[i][colunas_exportar[j]]), format_green)
         
+        # Aba 2: Funcionários sem direito
+        if not df_nao_tem_direito.empty:
+            df_nao_tem_direito[colunas_exportar].to_excel(
+                writer, 
+                index=False, 
+                sheet_name='Sem Direito'
+            )
+            
+            # Formatação para a aba
+            workbook = writer.book
+            worksheet = writer.sheets['Sem Direito']
+            format_red = workbook.add_format({'bg_color': '#FFCCCC'})
+            
+            # Aplica formatação vermelha
+            for i in range(len(df_nao_tem_direito)):
+                for j in range(len(colunas_exportar)):
+                    worksheet.write(i+1, j, str(df_nao_tem_direito.iloc[i][colunas_exportar[j]]), format_red)
+        
+        # Aba 3: Funcionários aguardando decisão
+        if not df_aguardando.empty:
+            df_aguardando[colunas_exportar].to_excel(
+                writer, 
+                index=False, 
+                sheet_name='Aguardando Decisão'
+            )
+            
+            # Formatação para a aba
+            workbook = writer.book
+            worksheet = writer.sheets['Aguardando Decisão']
+            format_blue = workbook.add_format({'bg_color': '#CCCCFF'})
+            
+            # Aplica formatação azul
+            for i in range(len(df_aguardando)):
+                for j in range(len(colunas_exportar)):
+                    worksheet.write(i+1, j, str(df_aguardando.iloc[i][colunas_exportar[j]]), format_blue)
+        
+        # Aba adicional: Resumo
         resumo_data = [
             ['RESUMO DO PROCESSAMENTO'],
             [f'Data de Geração: {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")}'],
             [''],
             ['Métricas Gerais'],
             [f'Total de Funcionários Processados: {len(df)}'],
-            [f'Total de Funcionários com Direito: {len(df_direito)}'],
-            [f'Valor Total dos Prêmios: R$ {df_direito["Valor_Premio"].sum():,.2f}'],
+            [f'Total de Funcionários com Direito: {len(df_tem_direito)}'],
+            [f'Total de Funcionários sem Direito: {len(df_nao_tem_direito)}'],
+            [f'Total de Funcionários Aguardando Decisão: {len(df_aguardando)}'],
+            [f'Valor Total dos Prêmios: R$ {df_tem_direito["Valor_Premio"].sum():,.2f}'],
         ]
         
         pd.DataFrame(resumo_data).to_excel(
