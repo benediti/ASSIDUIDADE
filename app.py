@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -6,6 +7,9 @@ import os
 
 # Ignora avisos do pandas
 warnings.filterwarnings('ignore')
+
+st.title("Processador de Ausências")
+st.write("Este aplicativo processa dados de ausências de funcionários.")
 
 def converter_data_br_para_datetime(data_str):
     """
@@ -37,13 +41,13 @@ def converter_data_br_para_datetime(data_str):
         except Exception:
             return None
 
-def carregar_arquivo_ausencias(caminho_arquivo):
+def carregar_arquivo_ausencias(uploaded_file):
     """
     Carrega o arquivo de ausências e converte colunas de data corretamente.
     """
     try:
         # Lê o arquivo Excel
-        df = pd.read_excel(caminho_arquivo)
+        df = pd.read_excel(uploaded_file)
         
         # Converte as colunas de data
         if 'Dia' in df.columns:
@@ -56,16 +60,16 @@ def carregar_arquivo_ausencias(caminho_arquivo):
         
         return df
     except Exception as e:
-        print(f"Erro ao carregar arquivo de ausências: {e}")
+        st.error(f"Erro ao carregar arquivo de ausências: {e}")
         return pd.DataFrame()
 
-def carregar_arquivo_funcionarios(caminho_arquivo):
+def carregar_arquivo_funcionarios(uploaded_file):
     """
     Carrega o arquivo de funcionários e converte colunas de data corretamente.
     """
     try:
         # Lê o arquivo Excel
-        df = pd.read_excel(caminho_arquivo)
+        df = pd.read_excel(uploaded_file)
         
         # Converte as colunas de data
         if 'Data Término Contrato' in df.columns:
@@ -78,20 +82,12 @@ def carregar_arquivo_funcionarios(caminho_arquivo):
         
         return df
     except Exception as e:
-        print(f"Erro ao carregar arquivo de funcionários: {e}")
+        st.error(f"Erro ao carregar arquivo de funcionários: {e}")
         return pd.DataFrame()
 
 def filtrar_ausencias_por_periodo(df_ausencias, data_inicio, data_fim):
     """
     Filtra ausências para um determinado período.
-    
-    Args:
-        df_ausencias: DataFrame com ausências
-        data_inicio: Data de início do período (datetime ou string no formato DD/MM/YYYY)
-        data_fim: Data de fim do período (datetime ou string no formato DD/MM/YYYY)
-    
-    Returns:
-        DataFrame filtrado com ausências no período
     """
     # Converte data_inicio e data_fim para datetime se forem strings
     if isinstance(data_inicio, str):
@@ -101,7 +97,7 @@ def filtrar_ausencias_por_periodo(df_ausencias, data_inicio, data_fim):
     
     # Verifica se a conversão ocorreu com sucesso
     if data_inicio is None or data_fim is None:
-        print("Erro: formato de data inválido.")
+        st.error("Erro: formato de data inválido.")
         return pd.DataFrame()
     
     # Filtra as ausências dentro do período
@@ -112,28 +108,15 @@ def filtrar_ausencias_por_periodo(df_ausencias, data_inicio, data_fim):
         ]
         return ausencias_periodo
     except Exception as e:
-        print(f"Erro ao filtrar ausências por período: {e}")
+        st.error(f"Erro ao filtrar ausências por período: {e}")
         return pd.DataFrame()
 
-def processar_dados(arquivo_ausencias, arquivo_funcionarios, mes=None, ano=None):
+def processar_dados(df_ausencias, df_funcionarios, mes=None, ano=None):
     """
     Processa os dados de ambos os arquivos com tratamento correto de datas.
-    
-    Args:
-        arquivo_ausencias: Caminho para o arquivo de ausências
-        arquivo_funcionarios: Caminho para o arquivo de funcionários
-        mes: Mês para filtrar (1-12)
-        ano: Ano para filtrar (ex: 2025)
-    
-    Returns:
-        DataFrame com os dados processados
     """
-    # Carrega os dados
-    df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
-    df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
-    
     if df_ausencias.empty or df_funcionarios.empty:
-        print("Erro: Um ou mais arquivos não puderam ser carregados corretamente.")
+        st.error("Erro: Um ou mais arquivos não puderam ser carregados corretamente.")
         return pd.DataFrame()
     
     # Se mês e ano forem fornecidos, filtra para esse período
@@ -166,37 +149,75 @@ def processar_dados(arquivo_ausencias, arquivo_funcionarios, mes=None, ano=None)
         
         return df_combinado
     else:
-        print("Erro: Colunas de matrícula não encontradas em um ou ambos os arquivos.")
+        st.warning("Aviso: Colunas de matrícula não encontradas em um ou ambos os arquivos.")
         return df_ausencias  # Retorna apenas as ausências se não for possível combinar
 
-def main():
-    """
-    Função principal para processar arquivos de ausências e funcionários.
-    """
-    # Defina os caminhos para os arquivos
-    arquivo_ausencias = 'AUSENCIAS 0325.xlsx'
-    arquivo_funcionarios = 'EQUIPPE  Base Funcionarios.xlsx'
-    
-    # Verifique se os arquivos existem
-    if not os.path.exists(arquivo_ausencias):
-        print(f"Erro: Arquivo {arquivo_ausencias} não encontrado.")
-        return
-    
-    if not os.path.exists(arquivo_funcionarios):
-        print(f"Erro: Arquivo {arquivo_funcionarios} não encontrado.")
-        return
-    
-    # Processamento para março de 2025
-    resultado = processar_dados(arquivo_ausencias, arquivo_funcionarios, mes=3, ano=2025)
-    
-    if not resultado.empty:
-        print(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-        
-        # Opcional: salvar o resultado em um novo arquivo Excel
-        resultado.to_excel('resultado_ausencias_março_2025.xlsx', index=False)
-        print("Arquivo de resultado salvo: resultado_ausencias_março_2025.xlsx")
-    else:
-        print("Nenhum resultado encontrado ou ocorreu um erro durante o processamento.")
+# Interface Streamlit
+st.sidebar.header("Upload de Arquivos")
 
-if __name__ == "__main__":
-    main()
+# Upload dos arquivos Excel
+arquivo_ausencias = st.sidebar.file_uploader("Arquivo de Ausências", type=["xlsx", "xls"])
+arquivo_funcionarios = st.sidebar.file_uploader("Arquivo de Funcionários", type=["xlsx", "xls"])
+
+# Seleção de período
+st.sidebar.header("Filtrar por Período")
+meses = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 
+         6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 
+         10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+
+mes_selecionado = st.sidebar.selectbox("Mês", options=list(meses.keys()), format_func=lambda x: meses[x])
+ano_selecionado = st.sidebar.number_input("Ano", min_value=2020, max_value=2030, value=2025)
+
+# Botão para processar
+processar = st.sidebar.button("Processar Dados")
+
+# Processamento
+if processar:
+    if arquivo_ausencias is not None and arquivo_funcionarios is not None:
+        with st.spinner("Processando arquivos..."):
+            # Carrega os dados
+            df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
+            df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
+            
+            # Processa os dados
+            resultado = processar_dados(df_ausencias, df_funcionarios, mes=mes_selecionado, ano=ano_selecionado)
+            
+            if not resultado.empty:
+                st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+                
+                # Exibe os resultados
+                st.subheader("Resultados")
+                st.dataframe(resultado)
+                
+                # Botão para download
+                csv = resultado.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download CSV",
+                    data=csv,
+                    file_name=f"resultado_ausencias_{meses[mes_selecionado]}_{ano_selecionado}.csv",
+                    mime="text/csv"
+                )
+                
+                # Botão para download do Excel
+                excel_buffer = resultado.to_excel(index=False)
+                st.download_button(
+                    label="Download Excel",
+                    data=excel_buffer,
+                    file_name=f"resultado_ausencias_{meses[mes_selecionado]}_{ano_selecionado}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("Nenhum resultado encontrado para o período selecionado.")
+    else:
+        st.warning("Por favor, faça o upload dos arquivos necessários.")
+
+# Exibe informações de uso
+st.sidebar.markdown("---")
+st.sidebar.info("""
+**Como usar:**
+1. Faça o upload do arquivo de ausências
+2. Faça o upload do arquivo de funcionários
+3. Selecione o mês e ano desejados
+4. Clique em "Processar Dados"
+5. Veja os resultados e faça o download se necessário
+""")
