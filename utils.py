@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import io
+from datetime import datetime
 
 def salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, nome):
     """Função auxiliar para salvar alterações"""
@@ -134,42 +136,57 @@ def editar_valores_status(df):
     with col2:
         if st.button("Exportar Arquivo Final", key="export_unique"):
             output = exportar_novo_excel(st.session_state.modified_df)
-            st.download_button(
-                label="📥 Baixar Arquivo Excel",
-                data=output,
-                file_name="funcionarios_premios.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_unique"
-            )
+            if output:
+                st.download_button(
+                    label="📥 Baixar Arquivo Excel",
+                    data=output,
+                    file_name="funcionarios_premios.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_unique"
+                )
+            else:
+                st.error("Erro ao gerar o arquivo Excel.")
     
     return st.session_state.modified_df
 
 def exportar_novo_excel(df):
-    import io
-    output = io.BytesIO()
-    
-    df_direito = df[df['Status'].str.contains('Tem direito')].copy()
-    df_exportar = df_direito[['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']]
-    
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_exportar.to_excel(writer, index=False, sheet_name='Funcionários com Direito')
+    try:
+        output = io.BytesIO()
         
-        resumo_data = [
-            ['RESUMO DO PROCESSAMENTO'],
-            [f'Data de Geração: {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")}'],
-            [''],
-            ['Métricas Gerais'],
-            [f'Total de Funcionários Processados: {len(df)}'],
-            [f'Total de Funcionários com Direito: {len(df_direito)}'],
-            [f'Valor Total dos Prêmios: R$ {df_direito["Valor_Premio"].sum():,.2f}'],
-        ]
+        # Filtrar funcionários com direito ao prêmio
+        df_direito = df[df['Status'].str.contains('Tem direito', na=False)].copy()
+        if df_direito.empty:
+            st.warning("Nenhum funcionário com direito ao prêmio foi encontrado.")
+            return None
         
-        pd.DataFrame(resumo_data).to_excel(
-            writer, 
-            index=False, 
-            header=False, 
-            sheet_name='Resumo'
-        )
-    
-    output.seek(0)
-    return output.getvalue()
+        # Selecionar colunas para exportação
+        df_exportar = df_direito[['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']]
+        
+        # Criar o arquivo Excel
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Aba com os funcionários com direito
+            df_exportar.to_excel(writer, index=False, sheet_name='Funcionários com Direito')
+            
+            # Aba com o resumo
+            resumo_data = [
+                ['RESUMO DO PROCESSAMENTO'],
+                [f'Data de Geração: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}'],
+                [''],
+                ['Métricas Gerais'],
+                [f'Total de Funcionários Processados: {len(df)}'],
+                [f'Total de Funcionários com Direito: {len(df_direito)}'],
+                [f'Valor Total dos Prêmios: R$ {df_direito["Valor_Premio"].sum():,.2f}'],
+            ]
+            
+            pd.DataFrame(resumo_data).to_excel(
+                writer, 
+                index=False, 
+                header=False, 
+                sheet_name='Resumo'
+            )
+        
+        output.seek(0)
+        return output.getvalue()
+    except Exception as e:
+        st.error(f"Erro ao exportar relatório: {e}")
+        return None
