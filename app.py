@@ -290,6 +290,30 @@ def aplicar_regras_pagamento(df):
     
     return df
 
+# Função para converter ou limpar valores para exportação
+def preparar_para_excel(df):
+    """
+    Prepara o DataFrame para exportação para Excel, 
+    convertendo datas para strings e limpando valores problemáticos.
+    """
+    df_limpo = df.copy()
+    
+    # Converte datas para strings
+    for coluna in df_limpo.columns:
+        # Identifica colunas com datas
+        if df_limpo[coluna].dtype == 'datetime64[ns]' or 'datetime' in str(df_limpo[coluna].dtype):
+            # Converte para string no formato DD/MM/YYYY
+            df_limpo[coluna] = df_limpo[coluna].apply(
+                lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) and not pd.isna(x) else ''
+            )
+        
+        # Trata valores NaT, NaN e None
+        df_limpo[coluna] = df_limpo[coluna].apply(
+            lambda x: '' if pd.isna(x) or x is None or (isinstance(x, float) and np.isnan(x)) else x
+        )
+    
+    return df_limpo
+
 # Interface Streamlit
 st.sidebar.header("Upload de Arquivos")
 
@@ -384,10 +408,13 @@ if processar:
                     mime="text/csv"
                 )
                 
+                # Preparar dados para Excel (limpar valores problemáticos)
+                df_excel = preparar_para_excel(df_exibir)
+                
                 # Botão para download do Excel - VERSÃO CORRIGIDA
                 buffer = BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_exibir.to_excel(writer, index=False, sheet_name='Resultado')
+                    df_excel.to_excel(writer, index=False, sheet_name='Resultado')
                     
                     # Acessa o objeto workbook e worksheet
                     workbook = writer.book
@@ -398,17 +425,22 @@ if processar:
                     formato_verde = workbook.add_format({'bg_color': '#CCFFCC'})
                     formato_azul = workbook.add_format({'bg_color': '#CCCCFF'})
                     
-                    # Aplica formatos baseados na coluna Status
-                    for i, valor in enumerate(df_exibir['Status']):
-                        if 'Não paga' in str(valor):
-                            for j in range(len(df_exibir.columns)):
-                                worksheet.write(i+1, j, df_exibir.iloc[i, j], formato_vermelho)
-                        elif 'Paga' in str(valor):
-                            for j in range(len(df_exibir.columns)):
-                                worksheet.write(i+1, j, df_exibir.iloc[i, j], formato_verde)
-                        elif 'Avaliar' in str(valor):
-                            for j in range(len(df_exibir.columns)):
-                                worksheet.write(i+1, j, df_exibir.iloc[i, j], formato_azul)
+                    # Métodos alternativos para aplicar formatação condicional
+                    for i, row in df_excel.iterrows():
+                        cor = df_exibir.iloc[i]['Cor']
+                        if cor == 'vermelho':
+                            formato = formato_vermelho
+                        elif cor == 'verde':
+                            formato = formato_verde
+                        elif cor == 'azul':
+                            formato = formato_azul
+                        else:
+                            continue  # Pula linhas sem cor definida
+                            
+                        # Aplica o formato a toda a linha
+                        for j in range(len(df_excel.columns)):
+                            # Use formato básico para todos os valores
+                            worksheet.write(i+1, j, str(df_excel.iloc[i, j]), formato)
                 
                 # Move o cursor para o início do buffer
                 buffer.seek(0)
