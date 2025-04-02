@@ -233,17 +233,57 @@ def aplicar_regras_pagamento(df):
     Regras:
     - Apenas funcionários com salário abaixo de R$ 2.542,86 têm direito a receber
     - Se tem falta -> 0,00 (vermelho)
-    - Se tem afastamento -> 0,00 (vermelho)
+    - Se tem afastamento -> Depende do tipo de afastamento
     - Se tem ausência -> Avaliar (azul)
     - Se horas = 220 -> R$ 300,00 (verde)
     - Se horas = 110 ou 120 -> R$ 150,00 (verde)
     - Se linha em branco -> Paga conforme horas
+    
+    Regras de afastamentos:
+    - Tem direito: Abonado Gerencia Loja, Abono Administrativo
+    - Aguardar decisão: Atraso
+    - Não tem direito: Atestado Médico, Atestado de Óbito, Folga Gestor, Licença Paternidade,
+      Licença Casamento, Acidente de Trabalho, Auxilio Doença, Primeira Suspensão, 
+      Segunda Suspensão, Férias, Abono Atraso, Falta não justificada, Processo Atraso, 
+      Confraternização universal, Atestado Médico (dias), Declaração Comparecimento Medico,
+      Processo Trabalhista, Licença Maternidade
     """
     # Adiciona coluna de resultado
     df['Valor a Pagar'] = 0.0
     df['Status'] = ''
     df['Cor'] = ''
     df['Observacoes'] = ''  # Adiciona coluna de observações
+    
+    # Define os tipos de afastamento e seus direitos
+    afastamentos_com_direito = [
+        'Abonado Gerencia Loja', 
+        'Abono Administrativo'
+    ]
+    
+    afastamentos_aguardar_decisao = [
+        'Atraso'
+    ]
+    
+    afastamentos_sem_direito = [
+        'Atestado Médico', 
+        'Atestado de Óbito', 
+        'Folga Gestor', 
+        'Licença Paternidade',
+        'Licença Casamento', 
+        'Acidente de Trabalho', 
+        'Auxilio Doença', 
+        'Primeira Suspensão', 
+        'Segunda Suspensão', 
+        'Férias', 
+        'Abono Atraso', 
+        'Falta não justificada', 
+        'Processo Atraso', 
+        'Confraternização universal', 
+        'Atestado Médico (dias)', 
+        'Declaração Comparecimento Medico',
+        'Processo Trabalhista', 
+        'Licença Maternidade'
+    ]
     
     # Processa cada linha
     for idx, row in df.iterrows():
@@ -290,7 +330,26 @@ def aplicar_regras_pagamento(df):
         
         # Verifica ocorrências
         tem_falta = row.get('Tem Falta', False)
-        tem_afastamento = row.get('Tem Afastamento', False)
+        
+        # Verifica o tipo de afastamento
+        tem_afastamento = False
+        tipo_afastamento = None
+        afastamento_com_direito = False
+        afastamento_aguardar = False
+        afastamento_sem_direito = False
+        
+        if 'Afastamentos' in df.columns and not pd.isna(row['Afastamentos']):
+            tem_afastamento = True
+            tipo_afastamento = str(row['Afastamentos']).strip()
+            
+            # Verifica o tipo de afastamento
+            if tipo_afastamento in afastamentos_com_direito:
+                afastamento_com_direito = True
+            elif tipo_afastamento in afastamentos_aguardar_decisao:
+                afastamento_aguardar = True
+            elif tipo_afastamento in afastamentos_sem_direito:
+                afastamento_sem_direito = True
+        
         tem_ausencia = row.get('Tem Ausência', False)
         
         # Aplicar regras na ordem correta
@@ -305,10 +364,42 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Cor'] = 'vermelho'
             df.at[idx, 'Observacoes'] = 'Tem falta'
         elif tem_afastamento:
-            df.at[idx, 'Valor a Pagar'] = 0.00
-            df.at[idx, 'Status'] = 'Não tem direito'
-            df.at[idx, 'Cor'] = 'vermelho'
-            df.at[idx, 'Observacoes'] = 'Tem afastamento'
+            # Afastamento sem direito
+            if afastamento_sem_direito:
+                df.at[idx, 'Valor a Pagar'] = 0.00
+                df.at[idx, 'Status'] = 'Não tem direito'
+                df.at[idx, 'Cor'] = 'vermelho'
+                df.at[idx, 'Observacoes'] = f'Afastamento sem direito: {tipo_afastamento}'
+            # Afastamento aguardar decisão
+            elif afastamento_aguardar:
+                df.at[idx, 'Valor a Pagar'] = 0.00
+                df.at[idx, 'Status'] = 'Aguardando decisão'
+                df.at[idx, 'Cor'] = 'azul'
+                df.at[idx, 'Observacoes'] = f'Afastamento para avaliar: {tipo_afastamento}'
+            # Afastamento com direito (continua a verificação normal)
+            elif afastamento_com_direito:
+                # Continua para verificar horas normalmente
+                if horas == 220:
+                    df.at[idx, 'Valor a Pagar'] = 300.00
+                    df.at[idx, 'Status'] = 'Tem direito'
+                    df.at[idx, 'Cor'] = 'verde'
+                    df.at[idx, 'Observacoes'] = f'Afastamento com direito ({tipo_afastamento}): 220 horas'
+                elif horas == 110 or horas == 120:
+                    df.at[idx, 'Valor a Pagar'] = 150.00
+                    df.at[idx, 'Status'] = 'Tem direito'
+                    df.at[idx, 'Cor'] = 'verde'
+                    df.at[idx, 'Observacoes'] = f'Afastamento com direito ({tipo_afastamento}): {int(horas)} horas'
+                else:
+                    df.at[idx, 'Valor a Pagar'] = 0.00
+                    df.at[idx, 'Status'] = 'Aguardando decisão'
+                    df.at[idx, 'Cor'] = 'azul'
+                    df.at[idx, 'Observacoes'] = f'Afastamento com direito ({tipo_afastamento}): Verificar horas: {horas}'
+            # Afastamento não identificado nas listas
+            else:
+                df.at[idx, 'Valor a Pagar'] = 0.00
+                df.at[idx, 'Status'] = 'Aguardando decisão'
+                df.at[idx, 'Cor'] = 'azul'
+                df.at[idx, 'Observacoes'] = f'Afastamento não classificado: {tipo_afastamento}'
         elif tem_ausencia:
             df.at[idx, 'Valor a Pagar'] = 0.00
             df.at[idx, 'Status'] = 'Aguardando decisão'
@@ -329,7 +420,7 @@ def aplicar_regras_pagamento(df):
             else:
                 df.at[idx, 'Valor a Pagar'] = 0.00
                 df.at[idx, 'Status'] = 'Aguardando decisão'
-                df.at[idx, 'Cor'] = ''
+                df.at[idx, 'Cor'] = 'azul'
                 df.at[idx, 'Observacoes'] = f'Verificar horas: {horas}'
     
     # Renomeia colunas para compatibilidade com utils.py
