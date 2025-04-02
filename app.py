@@ -1,279 +1,162 @@
-import pandas as pd
+
 import streamlit as st
-from datetime import datetime
-import os
-import logging
-import io
-from utils import editar_valores_status, exportar_novo_excel  # Importar funções do utils.py
+import pandas as pd
 
-# Configuração do logging
-logging.basicConfig(
-    filename='sistema_premios.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+def salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, nome):
+    st.session_state.modified_df.at[idx, 'Status'] = novo_status
+    st.session_state.modified_df.at[idx, 'Valor_Premio'] = novo_valor
+    st.session_state.modified_df.at[idx, 'Observacoes'] = nova_obs
+    st.session_state.expanded_item = idx
+    st.session_state.last_saved = nome
+    st.session_state.show_success = True
 
-def carregar_tipos_afastamento():
-    if os.path.exists("data/tipos_afastamento.pkl"):
-        return pd.read_pickle("data/tipos_afastamento.pkl")
-    return pd.DataFrame({"tipo": [], "categoria": []})
+def editar_valores_status(df):
+    if 'modified_df' not in st.session_state:
+        st.session_state.modified_df = df.copy()
 
-def salvar_tipos_afastamento(df):
-    df.to_pickle("data/tipos_afastamento.pkl")
+    # Garante que Valor_Premio está numérico
+    st.session_state.modified_df['Valor_Premio'] = pd.to_numeric(
+        st.session_state.modified_df['Valor_Premio']
+            .astype(str)
+            .str.replace('R$', '', regex=False)
+            .str.replace(',', '.', regex=False)
+            .str.strip(),
+        errors='coerce'
+    ).fillna(0.0)
 
-def processar_ausencias(df):
-    df = df.rename(columns={
-        "Matrícula": "Matricula",
-        "Centro de Custo": "Centro_de_Custo",
-        "Ausência Integral": "Ausencia_Integral",
-        "Ausência Parcial": "Ausencia_Parcial",
-        "Data de Demissão": "Data_de_Demissao"
-    })
-    
-    df['Matricula'] = pd.to_numeric(df['Matricula'], errors='coerce')
-    df = df.dropna(subset=['Matricula'])
-    df['Matricula'] = df['Matricula'].astype(int)
-    
-    df['Faltas'] = df['Falta'].fillna('')
-    df['Faltas'] = df['Faltas'].apply(lambda x: 1 if str(x).upper().strip() == 'X' else 0)
-    
-    def converter_para_horas(tempo):
-        if pd.isna(tempo) or tempo == '' or tempo == '00:00':
-            return 0
-        try:
-            if ':' in str(tempo):
-                horas, minutos = map(int, str(tempo).split(':'))
-                return horas + minutos/60
-            return 0
-        except:
-            return 0
-    
-    df['Horas_Atraso'] = df['Ausencia_Parcial'].apply(converter_para_horas)
-    df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
-    
-    resultado = df.groupby('Matricula').agg({
-        'Faltas': 'sum',
-        'Horas_Atraso': 'sum',
-        'Afastamentos': lambda x: '; '.join(sorted(set(filter(None, x))))
-    }).reset_index()
-    
-    resultado['Atrasos'] = resultado['Horas_Atraso'].apply(
-        lambda x: f"{int(x)}:{int((x % 1) * 60):02d}" if x > 0 else ""
+    if 'expanded_item' not in st.session_state:
+        st.session_state.expanded_item = None
+
+    if 'show_success' not in st.session_state:
+        st.session_state.show_success = False
+
+    if 'last_saved' not in st.session_state:
+        st.session_state.last_saved = None
+
+    st.subheader("Filtro Principal")
+    status_options = ["Todos", "Tem direito", "Não tem direito", "Aguardando decisão"]
+
+    status_principal = st.selectbox(
+        "Selecione o status para visualizar:",
+        options=status_options,
+        index=0,
+        key="status_principal_filter_unique"
     )
-    resultado = resultado.drop('Horas_Atraso', axis=1)
-    
-    df_tipos = carregar_tipos_afastamento()
-    for tipo in df_tipos['tipo'].unique():
-        resultado[tipo] = resultado['Afastamentos'].str.contains(tipo, case=False).astype(int)
-        resultado[tipo] = resultado[tipo].apply(lambda x: x if x > 0 else "")
-    
-    return resultado
 
-def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
-    afastamentos_impeditivos = [
-        "Declaração Acompanhante", "Feriado", "Emenda Feriado", 
-        "Licença Maternidade", "Declaração INSS (dias)", 
-        "Comparecimento Medico INSS", "Aposentado por Invalidez",
-        "Atestado Médico", "Atestado de Óbito", "Licença Paternidade",
-        "Licença Casamento", "Acidente de Trabalho", "Auxilio Doença",
-        "Primeira Suspensão", "Segunda Suspensão", "Férias",
-        "Falta não justificada", "Processo",
-        "Falta não justificada (dias)", "Atestado Médico (dias)"
-    ]
-    
-    afastamentos_decisao = ["Abono", "Atraso"]
-    
-    afastamentos_permitidos = [
-        "Folga Gestor", "Abonado Gerencia Loja",
-        "Confraternização universal", "Aniversario de São Paulo"
-    ]
+    df_filtrado = st.session_state.modified_df.copy()
+    if status_principal != "Todos":
+        df_filtrado = df_filtrado[df_filtrado['Status'] == status_principal]
 
-    if isinstance(data_limite_admissao, str):
-        data_limite_admissao = pd.to_datetime(data_limite_admissao)
+    st.subheader("Buscar Funcionários")
+    col1, col2, col3 = st.columns(3)
 
-    df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], errors='coerce')
-    df_funcionarios = df_funcionarios.dropna(subset=['Data_Admissao'])
-    df_funcionarios = df_funcionarios[df_funcionarios['Data_Admissao'] <= data_limite_admissao]
-    
-    resultados = []
-    for _, func in df_funcionarios.iterrows():
-        ausencias = df_ausencias[df_ausencias['Matricula'] == func['Matricula']]
-        
-        tem_afastamento_impeditivo = False
-        tem_afastamento_decisao = False
-        tem_apenas_permitidos = False
-        
-        if not ausencias.empty:
-            afastamentos = ' '.join(ausencias['Afastamentos'].fillna('').astype(str)).lower()
-            
-            for afastamento in afastamentos_impeditivos:
-                if afastamento.lower() in afastamentos:
-                    tem_afastamento_impeditivo = True
-                    break
-            
-            if not tem_afastamento_impeditivo:
-                for afastamento in afastamentos_decisao:
-                    if afastamento.lower() in afastamentos:
-                        tem_afastamento_decisao = True
-                        break
-            
-            tem_apenas_permitidos = not tem_afastamento_impeditivo and not tem_afastamento_decisao
-        
-        valor_premio = 0
-        if func['Qtd_Horas_Mensais'] == 220:
-            valor_premio = 300.00
-        elif func['Qtd_Horas_Mensais'] <= 110:
-            valor_premio = 150.00
-        
-        status = "Não tem direito"
-        total_atrasos = ""
-        
-        if not tem_afastamento_impeditivo:
-            if tem_afastamento_decisao:
-                status = "Aguardando decisão"
-                total_atrasos = ausencias['Atrasos'].iloc[0] if not ausencias.empty else ""
-            elif tem_apenas_permitidos or ausencias.empty:
-                status = "Tem direito"
-        
-        resultados.append({
-            'Matricula': func['Matricula'],
-            'Nome': func['Nome_Funcionario'],
-            'Cargo': func['Cargo'],
-            'Local': func['Nome_Local'],
-            'Horas_Mensais': func['Qtd_Horas_Mensais'],
-            'Data_Admissao': func['Data_Admissao'],
-            'Valor_Premio': valor_premio if status == "Tem direito" else 0,
-            'Status': f"{status} (Total Atrasos: {total_atrasos})" if status == "Aguardando decisão" and total_atrasos else status,
-            'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else '',
-            'Observações': ''
-        })
-    
-    return pd.DataFrame(resultados)
-
-def exportar_excel(df_mostrar, df_funcionarios):
-    output = io.BytesIO()
-    df_export = df_mostrar.copy()
-    df_export['Salario'] = df_funcionarios.set_index('Matricula').loc[df_export['Matricula'], 'Salario_Mes_Atual'].values
-    
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_export.to_excel(writer, index=False, sheet_name='Resultados Detalhados')
-        
-        relatorio_diretoria = pd.DataFrame([
-            ["RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", ""],
-            [f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}", ""],
-            ["", ""],
-            ["RESUMO GERAL", ""],
-            [f"Total de Funcionários Analisados: {len(df_export)}", ""],
-            [f"Funcionários com Direito: {len(df_export[df_export['Status'] == 'Tem direito'])}", ""],
-            [f"Funcionários Aguardando Decisão: {len(df_export[df_export['Status'].str.contains('Aguardando decisão', na=False)])}", ""],
-            [f"Valor Total dos Prêmios: R$ {df_export['Valor_Premio'].sum():,.2f}", ""],
-            ["", ""],
-            ["DETALHAMENTO POR STATUS", ""],
-        ])
-        
-        for status in df_export['Status'].unique():
-            df_status = df_export[df_export['Status'] == status]
-            relatorio_diretoria = pd.concat([relatorio_diretoria, pd.DataFrame([
-                [f"\nStatus: {status}", ""],
-                [f"Quantidade de Funcionários: {len(df_status)}", ""],
-                [f"Valor Total: R$ {df_status['Valor_Premio'].sum():,.2f}", ""],
-                ["Locais Afetados:", ""],
-                [", ".join(df_status['Local'].unique()), ""],
-                ["", ""]
-            ])])
-        
-        relatorio_diretoria.to_excel(writer, index=False, header=False, sheet_name='Relatório Executivo')
-    
-    return output.getvalue()
-
-def main():
-    st.set_page_config(page_title="Sistema de Verificação de Prêmios", page_icon="🏆", layout="wide")
-    st.title("Sistema de Verificação de Prêmios")
-    
-    with st.sidebar:
-        st.header("Configurações")
-        
-        data_limite = st.date_input(
-            "Data Limite de Admissão",
-             help="Funcionários admitidos após esta data não terão direito ao prêmio",
-            value=datetime.now(),
-            format="DD/MM/YYYY"
+    with col1:
+        matricula_busca = st.text_input("Buscar por Matrícula", key="matricula_search_unique")
+    with col2:
+        nome_busca = st.text_input("Buscar por Nome", key="nome_search_unique")
+    with col3:
+        ordem = st.selectbox(
+            "Ordenar por:",
+            options=["Nome (A-Z)", "Nome (Z-A)", "Matrícula (Crescente)", "Matrícula (Decrescente)"],
+            key="ordem_select_unique"
         )
-        
-        st.subheader("Base de Funcionários")
-        uploaded_func = st.file_uploader("Carregar base de funcionários", type=['xlsx'])
-        
-        st.subheader("Base de Ausências")
-        uploaded_ausencias = st.file_uploader("Carregar base de ausências", type=['xlsx'])
-        
-        st.subheader("Tipos de Afastamento")
-        uploaded_tipos = st.file_uploader("Atualizar tipos de afastamento", type=['xlsx'])
-        
-        if uploaded_tipos is not None:
-            try:
-                df_tipos_novo = pd.read_excel(uploaded_tipos)
-                if 'Nome' in df_tipos_novo.columns and 'Categoria' in df_tipos_novo.columns:
-                    df_tipos = df_tipos_novo.rename(columns={'Nome': 'tipo', 'Categoria': 'categoria'})
-                    salvar_tipos_afastamento(df_tipos)
-                    st.success("Tipos de afastamento atualizados!")
-                else:
-                    st.error("Arquivo deve conter colunas 'Nome' e 'Categoria'")
-            except Exception as e:
-                st.error(f"Erro ao processar arquivo: {str(e)}")
-    
-    if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
-        try:
-            df_funcionarios = pd.read_excel(uploaded_func)
-            df_funcionarios.columns = [
-                "Matricula", "Nome_Funcionario", "Cargo", 
-                "Codigo_Local", "Nome_Local", "Qtd_Horas_Mensais",
-                "Tipo_Contrato", "Data_Termino_Contrato", 
-                "Dias_Experiencia", "Salario_Mes_Atual", "Data_Admissao"
-            ]
-            
-            df_ausencias = pd.read_excel(uploaded_ausencias)
-            df_ausencias = processar_ausencias(df_ausencias)
-            
-            data_limite = pd.to_datetime(data_limite)  # Certifique-se de que data_limite seja datetime64[ns]
-            df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
-            
-            st.subheader("Resultado do Cálculo de Prêmios")
-            
-            df_mostrar = df_resultado
-            
-            # Editar resultados
-            df_mostrar = editar_valores_status(df_mostrar)
-            
-            # Mostrar métricas
-            st.metric("Total de Funcionários com Direito", len(df_mostrar[df_mostrar['Status'] == "Tem direito"]))
-            st.metric("Total de Funcionários sem Direito", len(df_mostrar[df_mostrar['Status'] == "Não tem direito"]))
-            st.metric("Valor Total dos Prêmios", f"R$ {df_mostrar['Valor_Premio'].sum():,.2f}")
-            
-            # Filtros
-            status_filter = st.selectbox("Filtrar por Status", options=["Todos", "Tem direito", "Não tem direito", "Aguardando decisão"])
-            if status_filter != "Todos":
-                df_mostrar = df_mostrar[df_mostrar['Status'] == status_filter]
-            
-            nome_filter = st.text_input("Filtrar por Nome")
-            if nome_filter:
-                df_mostrar = df_mostrar[df_mostrar['Nome'].str.contains(nome_filter, case=False)]
-            
-            # Mostrar tabela de resultados na interface
-            st.dataframe(df_mostrar)
-            
-            # Exportar resultados
-            if st.button("Exportar Resultados para Excel"):
-                df_exportar = df_mostrar[df_mostrar['Status'] == "Tem direito"].copy()
-                df_exportar['CPF'] = ""  # Adicione lógica para preencher CPF
-                df_exportar['CNPJ'] = "65035552000180"  # Adicione lógica para preencher CNPJ
-                df_exportar = df_exportar.rename(columns={'Valor_Premio': 'SomaDeVALOR'})
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_exportar.to_excel(writer, index=False, sheet_name='Funcionarios com Direito')
-                st.download_button("Baixar Excel", output.getvalue(), "funcionarios_com_direito.xlsx")
-        
-        except Exception as e:
-            st.error(f"Erro ao processar dados: {str(e)}")
 
-if __name__ == "__main__":
-    main()
+    if matricula_busca:
+        df_filtrado = df_filtrado[df_filtrado['Matricula'].astype(str).str.contains(matricula_busca)]
+    if nome_busca:
+        df_filtrado = df_filtrado[df_filtrado['Nome'].str.contains(nome_busca, case=False)]
+
+    if ordem == "Nome (A-Z)":
+        df_filtrado = df_filtrado.sort_values('Nome')
+    elif ordem == "Nome (Z-A)":
+        df_filtrado = df_filtrado.sort_values('Nome', ascending=False)
+    elif ordem == "Matrícula (Crescente)":
+        df_filtrado = df_filtrado.sort_values('Matricula')
+    elif ordem == "Matrícula (Decrescente)":
+        df_filtrado = df_filtrado.sort_values('Matricula', ascending=False)
+
+    st.subheader("Métricas do Filtro Atual")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Funcionários exibidos", len(df_filtrado))
+    with col2:
+        st.metric("Total com direito", len(df_filtrado[df_filtrado['Status'] == 'Tem direito']))
+    with col3:
+        st.metric("Valor total dos prêmios", f"R$ {df_filtrado['Valor_Premio'].sum():,.2f}")
+
+    if st.session_state.show_success:
+        st.success(f"✅ Alterações salvas com sucesso para {st.session_state.last_saved}!")
+        st.session_state.show_success = False
+
+    st.subheader("Editor de Dados")
+    for idx, row in df_filtrado.iterrows():
+        with st.expander(
+            f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", 
+            expanded=st.session_state.expanded_item == idx
+        ):
+            col1, col2 = st.columns(2)
+            with col1:
+                novo_status = st.selectbox(
+                    "Status",
+                    options=status_options[1:],
+                    index=status_options[1:].index(row['Status']) if row['Status'] in status_options[1:] else 0,
+                    key=f"status_{idx}_{row['Matricula']}"
+                )
+                novo_valor = st.number_input(
+                    "Valor do Prêmio",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=float(row['Valor_Premio']),
+                    step=50.0,
+                    format="%.2f",
+                    key=f"valor_{idx}_{row['Matricula']}"
+                )
+            with col2:
+                nova_obs = st.text_area(
+                    "Observações",
+                    value=row.get('Observacoes', ''),
+                    key=f"obs_{idx}_{row['Matricula']}"
+                )
+            if st.button("Salvar Alterações", key=f"save_{idx}_{row['Matricula']}"):
+                salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, row['Nome'])
+
+    st.subheader("Ações Gerais")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Reverter Todas as Alterações", key="revert_all_unique"):
+            st.session_state.modified_df = df.copy()
+            st.session_state.expanded_item = None
+            st.session_state.show_success = False
+            st.warning("⚠️ Todas as alterações foram revertidas!")
+    with col2:
+        if st.button("Exportar Arquivo Final", key="export_unique"):
+            output = exportar_novo_excel(st.session_state.modified_df)
+            st.download_button(
+                label="📥 Baixar Arquivo Excel",
+                data=output,
+                file_name="funcionarios_premios.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_unique"
+            )
+
+    return st.session_state.modified_df
+
+def exportar_novo_excel(df):
+    import io
+    output = io.BytesIO()
+    df_direito = df[df['Status'].str.contains('Tem direito')].copy()
+    df_exportar = df_direito[['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']]
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_exportar.to_excel(writer, index=False, sheet_name='Funcionários com Direito')
+        resumo_data = [
+            ['RESUMO DO PROCESSAMENTO'],
+            [f'Data de Geração: {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")}'],
+            [''],
+            ['Métricas Gerais'],
+            [f'Total de Funcionários Processados: {len(df)}'],
+            [f'Total de Funcionários com Direito: {len(df_direito)}'],
+            [f'Valor Total dos Prêmios: R$ {df_direito["Valor_Premio"].sum():,.2f}'],
+        ]
+        pd.DataFrame(resumo_data).to_excel(writer, index=False, header=False, sheet_name='Resumo')
+    output.seek(0)
+    return output.getvalue()
