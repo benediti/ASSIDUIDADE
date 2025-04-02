@@ -228,36 +228,31 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
 
 def aplicar_regras_pagamento(df):
     """
-    Aplica as regras de cálculo de pagamento conforme os critérios especificados.
+    Aplica as regras de pagamento conforme os critérios especificados:
     
-    Regras:
-    - Apenas funcionários com salário abaixo de R$ 2.542,86 têm direito a receber
-    - Se tem falta -> 0,00 (vermelho)
-    - Se tem afastamento -> Depende do tipo de afastamento
-    - Se tem ausência -> Avaliar (azul)
-    - Se horas = 220 -> R$ 300,00 (verde)
-    - Se horas = 110 ou 120 -> R$ 150,00 (verde)
-    - Quem não tem nada na tabela de ausências e está dentro do filtro de salário 
-      e data de admissão tem direito.
-    - Funções específicas sem direito: AUX DE SERV GERAIS (INT), AUX DE LIMPEZA (INT),
-      LIMPADOR DE VIDROS INT, RECEPCIONISTA INTERMITENTE, PORTEIRO INTERMITENTE
-    
-    Regras de afastamentos:
-    - Tem direito: Abonado Gerencia Loja, Abono Administrativo
-    - Aguardar decisão: Atraso
-    - Não tem direito: Atestado Médico, Atestado de Óbito, Folga Gestor, Licença Paternidade,
-      Licença Casamento, Acidente de Trabalho, Auxilio Doença, Primeira Suspensão, 
-      Segunda Suspensão, Férias, Abono Atraso, Falta não justificada, Processo Atraso, 
-      Confraternização universal, Atestado Médico (dias), Declaração Comparecimento Medico,
-      Processo Trabalhista, Licença Maternidade
+    - Se o cargo for um dos que não têm direito, marca imediatamente como "Não tem direito".
+    - Se o salário for igual ou superior a R$ 2.542,86, marca como "Não tem direito".
+    - Se houver falta, marca como "Não tem direito".
+    - Se houver registro de afastamento, verifica:
+         * Se o afastamento for dos que NÃO dão direito, marca como "Não tem direito".
+         * Se o afastamento for de "Atraso", marca como "Aguardando decisão".
+         * Se o afastamento for dos que dão direito (Abonado Gerencia Loja ou Abono Administrativo),
+           segue para o cálculo baseado nas horas.
+         * Se o tipo de afastamento não for identificado, marca como "Aguardando decisão".
+    - Se houver ausência (Ausência Integral ou Parcial), marca como "Aguardando decisão".
+    - Caso não haja nenhum problema (ausência/falta/afastamento impeditivo), calcula o valor
+      a pagar com base na quantidade de horas:
+         * 220 horas = R$ 300,00
+         * 110 ou 120 horas = R$ 150,00
+         * Caso contrário, marca como "Aguardando decisão" para verificação de horas.
     """
-    # Adiciona coluna de resultado
+    # Inicializa as colunas necessárias
     df['Valor a Pagar'] = 0.0
     df['Status'] = ''
     df['Cor'] = ''
-    df['Observacoes'] = ''  # Adiciona coluna de observações
-    
-    # Funções que não têm direito ao pagamento
+    df['Observacoes'] = ''
+
+    # Lista de cargos que não têm direito
     funcoes_sem_direito = [
         'AUX DE SERV GERAIS (INT)', 
         'AUX DE LIMPEZA (INT)',
@@ -266,16 +261,14 @@ def aplicar_regras_pagamento(df):
         'PORTEIRO INTERMITENTE'
     ]
     
-    # Define os tipos de afastamento e seus direitos
+    # Listas de afastamentos
     afastamentos_com_direito = [
         'Abonado Gerencia Loja', 
         'Abono Administrativo'
     ]
-    
     afastamentos_aguardar_decisao = [
         'Atraso'
     ]
-    
     afastamentos_sem_direito = [
         'Atestado Médico', 
         'Atestado de Óbito', 
@@ -297,180 +290,114 @@ def aplicar_regras_pagamento(df):
         'Licença Maternidade'
     ]
     
-    # Processa cada linha
+    # Processa cada funcionário
     for idx, row in df.iterrows():
-        # Verifica função do funcionário
-        funcao_sem_direito = False
-        funcao = ''
-        
-        # Verifica o campo de função/cargo
-        if 'Cargo' in df.columns and not pd.isna(row['Cargo']):
-            funcao = str(row['Cargo']).strip()
-            if funcao in funcoes_sem_direito:
-                funcao_sem_direito = True
-        
-        # Verifica salário
-        salario = 0
-        salario_original = row.get('Salário Mês Atual', 0)
-        
-        # Converte o salário para um valor numérico
-        try:
-            # Se já for um número, usa diretamente
-            if isinstance(salario_original, (int, float)) and not pd.isna(salario_original):
-                salario = float(salario_original)
-            # Caso seja string ou outro tipo
-            elif salario_original and not pd.isna(salario_original):
-                # Converte para string primeiro para garantir
-                salario_str = str(salario_original)
-                # Remove quaisquer caracteres não numéricos, exceto pontos e vírgulas
-                salario_limpo = ''.join(c for c in salario_str if c.isdigit() or c in '.,')
-                # Se usar vírgula como separador decimal, converte para ponto
-                if ',' in salario_limpo and '.' not in salario_limpo:
-                    salario_limpo = salario_limpo.replace(',', '.')
-                # Converte para float
-                if salario_limpo:
-                    salario = float(salario_limpo)
-        except Exception as e:
-            # Se ocorrer erro na conversão, usa 0
-            salario = 0
-        
-        # Verifica horas
-        horas = 0
-        if 'Qtd Horas Mensais' in df.columns:
-            try:
-                qtd_horas = row['Qtd Horas Mensais']
-                # Verifica se é numérico
-                if isinstance(qtd_horas, (int, float)) and not pd.isna(qtd_horas):
-                    horas = float(qtd_horas)
-                # Caso seja string
-                elif qtd_horas and not pd.isna(qtd_horas):
-                    horas_str = str(qtd_horas).strip()
-                    if horas_str.isdigit():
-                        horas = float(horas_str)
-            except Exception:
-                horas = 0
-        
-        # Verifica se não tem NADA nas colunas de ausências/faltas/afastamentos
-        tem_ausencia_falta_afastamento = False
-        
-        # Verifica faltas
-        tem_falta = False
-        if 'Falta' in df.columns and not pd.isna(row['Falta']):
-            tem_falta = True
-            tem_ausencia_falta_afastamento = True
-        
-        # Verifica afastamento
-        tem_afastamento = False
-        tipo_afastamento = None
-        afastamento_com_direito = False
-        afastamento_aguardar = False
-        afastamento_sem_direito = False
-        
-        if 'Afastamentos' in df.columns and not pd.isna(row['Afastamentos']):
-            tem_afastamento = True
-            tem_ausencia_falta_afastamento = True
-            tipo_afastamento = str(row['Afastamentos']).strip()
-            
-            # Verifica o tipo de afastamento
-            if tipo_afastamento in afastamentos_com_direito:
-                afastamento_com_direito = True
-            elif tipo_afastamento in afastamentos_aguardar_decisao:
-                afastamento_aguardar = True
-            elif tipo_afastamento in afastamentos_sem_direito:
-                afastamento_sem_direito = True
-        
-        # Verifica ausências
-        tem_ausencia = False
-        if (('Ausência Integral' in df.columns and not pd.isna(row['Ausência Integral'])) or 
-            ('Ausência Parcial' in df.columns and not pd.isna(row['Ausência Parcial']))):
-            tem_ausencia = True
-            tem_ausencia_falta_afastamento = True
-        
-        # Aplicar regras na ordem correta
-        if funcao_sem_direito:
-            df.at[idx, 'Valor a Pagar'] = 0.00
+        # 1. Verifica o cargo
+        cargo = str(row.get('Cargo', '')).strip()
+        if cargo in funcoes_sem_direito:
+            df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
-            df.at[idx, 'Observacoes'] = f'Função sem direito: {funcao}'
-        elif salario >= 2542.86:
-            df.at[idx, 'Valor a Pagar'] = 0.00
+            df.at[idx, 'Observacoes'] = f'Cargo sem direito: {cargo}'
+            continue  # Não processa mais este funcionário
+        
+        # 2. Verifica o salário
+        salario = 0
+        salario_original = row.get('Salário Mês Atual', 0)
+        try:
+            if isinstance(salario_original, (int, float)) and not pd.isna(salario_original):
+                salario = float(salario_original)
+            elif salario_original and not pd.isna(salario_original):
+                salario_str = str(salario_original)
+                salario_limpo = ''.join(c for c in salario_str if c.isdigit() or c in '.,')
+                if ',' in salario_limpo and '.' not in salario_limpo:
+                    salario_limpo = salario_limpo.replace(',', '.')
+                if salario_limpo:
+                    salario = float(salario_limpo)
+        except Exception:
+            salario = 0
+        
+        if salario >= 2542.86:
+            df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
             df.at[idx, 'Observacoes'] = f'Salário acima do limite: R$ {salario:.2f}'
-        elif tem_falta:
-            df.at[idx, 'Valor a Pagar'] = 0.00
+            continue
+
+        # 3. Verifica faltas
+        if 'Falta' in df.columns and not pd.isna(row.get('Falta')):
+            df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
             df.at[idx, 'Observacoes'] = 'Tem falta'
-        elif tem_afastamento:
-            # Afastamento sem direito
-            if afastamento_sem_direito:
-                df.at[idx, 'Valor a Pagar'] = 0.00
+            continue
+
+        # 4. Verifica afastamentos
+        if 'Afastamentos' in df.columns and not pd.isna(row.get('Afastamentos')):
+            tipo_afastamento = str(row.get('Afastamentos')).strip()
+            
+            if tipo_afastamento in afastamentos_sem_direito:
+                df.at[idx, 'Valor a Pagar'] = 0.0
                 df.at[idx, 'Status'] = 'Não tem direito'
                 df.at[idx, 'Cor'] = 'vermelho'
                 df.at[idx, 'Observacoes'] = f'Afastamento sem direito: {tipo_afastamento}'
-            # Afastamento aguardar decisão
-            elif afastamento_aguardar:
-                df.at[idx, 'Valor a Pagar'] = 0.00
+                continue
+            elif tipo_afastamento in afastamentos_aguardar_decisao:
+                df.at[idx, 'Valor a Pagar'] = 0.0
                 df.at[idx, 'Status'] = 'Aguardando decisão'
                 df.at[idx, 'Cor'] = 'azul'
                 df.at[idx, 'Observacoes'] = f'Afastamento para avaliar: {tipo_afastamento}'
-            # Afastamento com direito (continua a verificação normal)
-            elif afastamento_com_direito:
-                # Continua para verificar horas normalmente
-                if horas == 220:
-                    df.at[idx, 'Valor a Pagar'] = 300.00
-                    df.at[idx, 'Status'] = 'Tem direito'
-                    df.at[idx, 'Cor'] = 'verde'
-                    df.at[idx, 'Observacoes'] = f'Afastamento com direito ({tipo_afastamento}): 220 horas'
-                elif horas == 110 or horas == 120:
-                    df.at[idx, 'Valor a Pagar'] = 150.00
-                    df.at[idx, 'Status'] = 'Tem direito'
-                    df.at[idx, 'Cor'] = 'verde'
-                    df.at[idx, 'Observacoes'] = f'Afastamento com direito ({tipo_afastamento}): {int(horas)} horas'
-                else:
-                    df.at[idx, 'Valor a Pagar'] = 0.00
-                    df.at[idx, 'Status'] = 'Aguardando decisão'
-                    df.at[idx, 'Cor'] = 'azul'
-                    df.at[idx, 'Observacoes'] = f'Afastamento com direito ({tipo_afastamento}): Verificar horas: {horas}'
-            # Afastamento não identificado nas listas
+                continue
+            elif tipo_afastamento in afastamentos_com_direito:
+                # Se o afastamento dá direito, prossegue para a verificação das horas
+                pass
             else:
-                df.at[idx, 'Valor a Pagar'] = 0.00
+                # Se o tipo não for reconhecido, marca como "Aguardando decisão"
+                df.at[idx, 'Valor a Pagar'] = 0.0
                 df.at[idx, 'Status'] = 'Aguardando decisão'
                 df.at[idx, 'Cor'] = 'azul'
                 df.at[idx, 'Observacoes'] = f'Afastamento não classificado: {tipo_afastamento}'
-        elif tem_ausencia:
-            df.at[idx, 'Valor a Pagar'] = 0.00
+                continue
+
+        # 5. Verifica ausências (se houver)
+        if (('Ausência Integral' in df.columns and not pd.isna(row.get('Ausência Integral'))) or 
+            ('Ausência Parcial' in df.columns and not pd.isna(row.get('Ausência Parcial')))):
+            df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Aguardando decisão'
             df.at[idx, 'Cor'] = 'azul'
             df.at[idx, 'Observacoes'] = 'Tem ausência - Necessita avaliação'
+            continue
+
+        # 6. Se não houve nenhum impeditivo, calcula com base na quantidade de horas
+        horas = 0
+        if 'Qtd Horas Mensais' in df.columns:
+            try:
+                qtd_horas = row.get('Qtd Horas Mensais', 0)
+                if isinstance(qtd_horas, (int, float)) and not pd.isna(qtd_horas):
+                    horas = float(qtd_horas)
+                elif qtd_horas and not pd.isna(qtd_horas):
+                    if str(qtd_horas).isdigit():
+                        horas = float(qtd_horas)
+            except Exception:
+                horas = 0
+
+        if horas == 220:
+            df.at[idx, 'Valor a Pagar'] = 300.00
+            df.at[idx, 'Status'] = 'Tem direito'
+            df.at[idx, 'Cor'] = 'verde'
+            df.at[idx, 'Observacoes'] = 'Sem ausências - 220 horas'
+        elif horas in [110, 120]:
+            df.at[idx, 'Valor a Pagar'] = 150.00
+            df.at[idx, 'Status'] = 'Tem direito'
+            df.at[idx, 'Cor'] = 'verde'
+            df.at[idx, 'Observacoes'] = f'Sem ausências - {int(horas)} horas'
         else:
-            # Não tem ausência/falta/afastamento e está dentro do limite de salário
-            # REGRA: Quem não tem nada na tabela ausências e está dentro do filtro tem direito
-            # Paga conforme as horas
-            if horas == 220:
-                df.at[idx, 'Valor a Pagar'] = 300.00
-                df.at[idx, 'Status'] = 'Tem direito'
-                df.at[idx, 'Cor'] = 'verde'
-                df.at[idx, 'Observacoes'] = 'Sem ausências - 220 horas'
-            elif horas == 110 or horas == 120:
-                df.at[idx, 'Valor a Pagar'] = 150.00
-                df.at[idx, 'Status'] = 'Tem direito'
-                df.at[idx, 'Cor'] = 'verde'
-                df.at[idx, 'Observacoes'] = f'Sem ausências - {int(horas)} horas'
-            elif not tem_ausencia_falta_afastamento:
-                # Não tem ausência/falta/afastamento, mas horas incomuns
-                df.at[idx, 'Valor a Pagar'] = 0.00
-                df.at[idx, 'Status'] = 'Tem direito'
-                df.at[idx, 'Cor'] = 'verde'
-                df.at[idx, 'Observacoes'] = f'Sem ausências - Verificar horas: {horas}'
-            else:
-                df.at[idx, 'Valor a Pagar'] = 0.00
-                df.at[idx, 'Status'] = 'Aguardando decisão'
-                df.at[idx, 'Cor'] = 'azul'
-                df.at[idx, 'Observacoes'] = f'Verificar horas: {horas}'
-    
-    # Renomeia colunas para compatibilidade com utils.py
+            df.at[idx, 'Valor a Pagar'] = 0.00
+            df.at[idx, 'Status'] = 'Aguardando decisão'
+            df.at[idx, 'Cor'] = 'azul'
+            df.at[idx, 'Observacoes'] = f'Sem ausências - verificar horas: {horas}'
+
+    # Renomeia colunas para compatibilidade na exportação
     df = df.rename(columns={
         'Matrícula': 'Matricula',
         'Nome Funcionário': 'Nome',
@@ -479,6 +406,7 @@ def aplicar_regras_pagamento(df):
     })
     
     return df
+
 
 def exportar_novo_excel(df):
     output = BytesIO()
