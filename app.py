@@ -135,6 +135,59 @@ def filtrar_ausencias_por_periodo(df_ausencias, data_inicio, data_fim):
         st.error(f"Erro ao filtrar ausências por período: {e}")
         return df_ausencias
 
+def consolidar_dados_funcionario(df_combinado):
+    """
+    Consolida os dados para que cada funcionário apareça apenas uma vez no relatório.
+    """
+    if df_combinado.empty:
+        return df_combinado
+    
+    # Verifica colunas necessárias
+    colunas_funcionario = ['Matrícula', 'Nome Funcionário', 'Cargo', 'Qtd Horas Mensais', 
+                          'Salário Mês Atual', 'Data Admissão', 'Nome Local', 'Tipo Contrato']
+    
+    # Lista para guardar os dados consolidados
+    dados_consolidados = []
+    
+    # Agrupa por matrícula para processar cada funcionário individualmente
+    for matricula, grupo in df_combinado.groupby('Matrícula'):
+        # Pega os dados básicos do funcionário (mesmos para todas as ocorrências)
+        funcionario = grupo.iloc[0].copy()
+        
+        # Verifica se tem faltas
+        tem_falta = False
+        if 'Falta' in df_combinado.columns:
+            tem_falta = grupo['Falta'].notna().any()
+        
+        # Verifica se tem afastamentos
+        tem_afastamento = False
+        if 'Afastamentos' in df_combinado.columns:
+            tem_afastamento = grupo['Afastamentos'].notna().any()
+        
+        # Verifica se tem ausências
+        tem_ausencia = False
+        if 'Ausência Integral' in df_combinado.columns and 'Ausência Parcial' in df_combinado.columns:
+            tem_ausencia = grupo['Ausência Integral'].notna().any() or grupo['Ausência Parcial'].notna().any()
+        
+        # Cria uma nova linha para o funcionário
+        nova_linha = pd.Series({
+            'Tem Falta': tem_falta,
+            'Tem Afastamento': tem_afastamento,
+            'Tem Ausência': tem_ausencia
+        })
+        
+        # Adiciona os dados do funcionário
+        for coluna in colunas_funcionario:
+            if coluna in funcionario.index:
+                nova_linha[coluna] = funcionario[coluna]
+        
+        dados_consolidados.append(nova_linha)
+    
+    # Cria o DataFrame consolidado
+    df_consolidado = pd.DataFrame(dados_consolidados)
+    
+    return df_consolidado
+
 def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, mes=None, ano=None, data_limite_admissao=None):
     """
     Processa os dados de ambos os arquivos com tratamento correto de datas.
@@ -196,20 +249,23 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, mes=None, an
                     suffixes=('', '_afastamento')
                 )
         
-        # Aplicar as regras de cálculo
-        df_combinado = aplicar_regras_pagamento(df_combinado)
+        # Consolida os dados para que cada funcionário apareça apenas uma vez
+        df_consolidado = consolidar_dados_funcionario(df_combinado)
         
-        return df_combinado
+        # Aplicar as regras de cálculo
+        df_final = aplicar_regras_pagamento(df_consolidado)
+        
+        return df_final
     else:
         st.warning("Aviso: Colunas de matrícula não encontradas em um ou ambos os arquivos.")
-        return df_ausencias  # Retorna apenas as ausências se não for possível combinar
+        return pd.DataFrame()
 
 def aplicar_regras_pagamento(df):
     """
     Aplica as regras de cálculo de pagamento conforme os critérios especificados.
     
-    Regras:
-    - Se salário > R$ 2.542,86 -> Não paga (vermelho)
+    Regras corrigidas:
+    - Apenas funcionários com salário abaixo de R$ 2.542,86 têm direito a receber
     - Se tem falta -> 0,00 (vermelho)
     - Se tem afastamento -> 0,00 (vermelho)
     - Se tem ausência -> Avaliar (azul)
@@ -243,24 +299,17 @@ def aplicar_regras_pagamento(df):
                 horas = 0
         
         # Verifica ocorrências
-        tem_falta = False
-        if 'Falta' in df.columns and not pd.isna(row['Falta']):
-            tem_falta = True
-        
-        tem_afastamento = False
-        if 'Afastamentos' in df.columns and not pd.isna(row['Afastamentos']):
-            tem_afastamento = True
-        
-        tem_ausencia = False
-        if ('Ausência Integral' in df.columns and not pd.isna(row['Ausência Integral'])) or \
-           ('Ausência Parcial' in df.columns and not pd.isna(row['Ausência Parcial'])):
-            tem_ausencia = True
+        tem_falta = row.get('Tem Falta', False)
+        tem_afastamento = row.get('Tem Afastamento', False)
+        tem_ausencia = row.get('Tem Ausência', False)
         
         # Aplicar regras na ordem correta
-        if salario > 2542.86:
+        # Primeiro verifica se o salário está abaixo do limite para ter direito
+        if salario >= 2542.86:
             df.at[idx, 'Valor a Pagar'] = 0.00
             df.at[idx, 'Status'] = 'Não paga - Salário acima do limite'
             df.at[idx, 'Cor'] = 'vermelho'
+        # Depois aplica as outras regras
         elif tem_falta:
             df.at[idx, 'Valor a Pagar'] = 0.00
             df.at[idx, 'Status'] = 'Não paga - Tem falta'
@@ -378,8 +427,10 @@ if processar:
                     else:
                         return [''] * len(row)
                 
-                # Remove a coluna Cor antes de exibir
-                df_exibir = resultado.copy()
+                # Remove colunas auxiliares antes de exibir
+                colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência', 'Cor']
+                colunas_exibir = [c for c in resultado.columns if c not in colunas_esconder]
+                df_exibir = resultado[colunas_exibir].copy()
                 
                 # Exibe os resultados
                 st.subheader("Resultados")
@@ -427,7 +478,7 @@ if processar:
                     
                     # Métodos alternativos para aplicar formatação condicional
                     for i, row in df_excel.iterrows():
-                        cor = df_exibir.iloc[i]['Cor']
+                        cor = resultado.iloc[i]['Cor'] if 'Cor' in resultado.columns else ''
                         if cor == 'vermelho':
                             formato = formato_vermelho
                         elif cor == 'verde':
