@@ -245,62 +245,47 @@ def aplicar_regras_pagamento(df):
     df['Cor'] = ''
     df['Observacoes'] = ''  # Adiciona coluna de observações
     
-    # Cria uma tabela de depuração para exibir valores processados de salário
-    debug_data = []
-    
     # Processa cada linha
     for idx, row in df.iterrows():
-        # Verifica salário - FUNÇÃO MELHORADA
+        # Verifica salário
         salario = 0
-        salario_original = row.get('Salário Mês Atual', None)
+        salario_original = row.get('Salário Mês Atual', 0)
         
+        # Converte o salário para um valor numérico
         try:
-            # Tenta converter direto se for um tipo numérico
-            if isinstance(salario_original, (int, float)):
+            # Se já for um número, usa diretamente
+            if isinstance(salario_original, (int, float)) and not pd.isna(salario_original):
                 salario = float(salario_original)
-            # Caso seja string, limpa e converte
-            elif isinstance(salario_original, str):
-                salario_str = salario_original
-                # Remove R$ e espaços se existirem
-                salario_limpo = salario_str.replace('R$', '').replace(' ', '')
-                # Se usa vírgula como separador decimal, converte para ponto
+            # Caso seja string ou outro tipo
+            elif salario_original and not pd.isna(salario_original):
+                # Converte para string primeiro para garantir
+                salario_str = str(salario_original)
+                # Remove quaisquer caracteres não numéricos, exceto pontos e vírgulas
+                salario_limpo = ''.join(c for c in salario_str if c.isdigit() or c in '.,')
+                # Se usar vírgula como separador decimal, converte para ponto
                 if ',' in salario_limpo and '.' not in salario_limpo:
                     salario_limpo = salario_limpo.replace(',', '.')
                 # Converte para float
-                salario = float(salario_limpo)
-            
-            # Debug information
-            debug_item = {
-                'Matricula': row.get('Matrícula', '') or row.get('Matricula', ''),
-                'Nome': row.get('Nome Funcionário', '') or row.get('Nome', ''),
-                'Salario_Original': salario_original,
-                'Salario_Tipo': type(salario_original).__name__,
-                'Salario_Convertido': salario
-            }
-            debug_data.append(debug_item)
-            
-        except (ValueError, TypeError) as e:
-            # Se ocorrer erro na conversão, registra para debug
-            debug_item = {
-                'Matricula': row.get('Matrícula', '') or row.get('Matricula', ''),
-                'Nome': row.get('Nome Funcionário', '') or row.get('Nome', ''),
-                'Salario_Original': salario_original,
-                'Salario_Tipo': type(salario_original).__name__,
-                'Erro': str(e)
-            }
-            debug_data.append(debug_item)
+                if salario_limpo:
+                    salario = float(salario_limpo)
+        except Exception as e:
+            # Se ocorrer erro na conversão, usa 0
             salario = 0
         
         # Verifica horas
         horas = 0
         if 'Qtd Horas Mensais' in df.columns:
             try:
-                horas_valor = row['Qtd Horas Mensais']
-                if isinstance(horas_valor, (int, float)):
-                    horas = float(horas_valor)
-                elif isinstance(horas_valor, str) and horas_valor.strip():
-                    horas = float(horas_valor.strip())
-            except (ValueError, TypeError):
+                qtd_horas = row['Qtd Horas Mensais']
+                # Verifica se é numérico
+                if isinstance(qtd_horas, (int, float)) and not pd.isna(qtd_horas):
+                    horas = float(qtd_horas)
+                # Caso seja string
+                elif qtd_horas and not pd.isna(qtd_horas):
+                    horas_str = str(qtd_horas).strip()
+                    if horas_str.isdigit():
+                        horas = float(horas_str)
+            except Exception:
                 horas = 0
         
         # Verifica ocorrências
@@ -308,7 +293,7 @@ def aplicar_regras_pagamento(df):
         tem_afastamento = row.get('Tem Afastamento', False)
         tem_ausencia = row.get('Tem Ausência', False)
         
-        # Aplicar regras na ordem correta e definir status conforme utils.py
+        # Aplicar regras na ordem correta
         if salario >= 2542.86:
             df.at[idx, 'Valor a Pagar'] = 0.00
             df.at[idx, 'Status'] = 'Não tem direito'
@@ -346,20 +331,6 @@ def aplicar_regras_pagamento(df):
                 df.at[idx, 'Status'] = 'Aguardando decisão'
                 df.at[idx, 'Cor'] = ''
                 df.at[idx, 'Observacoes'] = f'Verificar horas: {horas}'
-    
-    # Exibe a tabela de depuração de salários
-    st.write("### Debug: Conversão de Salários")
-    df_debug = pd.DataFrame(debug_data)
-    if not df_debug.empty:
-        st.dataframe(df_debug.head(10))  # Mostra apenas as primeiras 10 linhas para não sobrecarregar a UI
-        
-        # Mostra estatísticas de salários
-        salarios_acima_limite = sum(1 for item in debug_data if item.get('Salario_Convertido', 0) >= 2542.86)
-        salarios_abaixo_limite = sum(1 for item in debug_data if item.get('Salario_Convertido', 0) < 2542.86)
-        
-        st.write(f"Total de registros: {len(debug_data)}")
-        st.write(f"Salários acima do limite (≥ R$2.542,86): {salarios_acima_limite}")
-        st.write(f"Salários abaixo do limite (< R$2.542,86): {salarios_abaixo_limite}")
     
     # Renomeia colunas para compatibilidade com utils.py
     df = df.rename(columns={
