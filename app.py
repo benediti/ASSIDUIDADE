@@ -75,6 +75,93 @@ def processar_ausencias(df):
     
     return resultado
 
+def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
+    # Lista de afastamentos que impedem o prêmio
+    afastamentos_impeditivos = [
+        "Declaração Acompanhante", "Feriado", "Emenda Feriado", 
+        "Licença Maternidade", "Declaração INSS (dias)", 
+        "Comparecimento Medico INSS", "Aposentado por Invalidez",
+        "Atestado Médico", "Atestado de Óbito", "Licença Paternidade",
+        "Licença Casamento", "Acidente de Trabalho", "Auxilio Doença",
+        "Primeira Suspensão", "Segunda Suspensão", "Férias",
+        "Falta não justificada", "Processo",
+        "Falta não justificada (dias)", "Atestado Médico (dias)"
+    ]
+    
+    # Afastamentos que precisam de decisão
+    afastamentos_decisao = ["Abono", "Atraso"]
+    
+    # Afastamentos permitidos
+    afastamentos_permitidos = [
+        "Folga Gestor", "Abonado Gerencia Loja",
+        "Confraternização universal", "Aniversario de São Paulo"
+    ]
+    
+    # Filtrar pela data de admissão
+    df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], dayfirst=True, errors='coerce')
+    df_funcionarios = df_funcionarios[df_funcionarios['Data_Admissao'] <= pd.to_datetime(data_limite_admissao)]
+    
+    resultados = []
+    for _, func in df_funcionarios.iterrows():
+        ausencias = df_ausencias[df_ausencias['Matricula'] == func['Matricula']]
+        
+        tem_afastamento_impeditivo = False
+        tem_afastamento_decisao = False
+        tem_apenas_permitidos = False
+        
+        if not ausencias.empty:
+            afastamentos = ' '.join(ausencias['Afastamentos'].fillna('').astype(str)).lower()
+            
+            # Verificar afastamentos impeditivos
+            for afastamento in afastamentos_impeditivos:
+                if afastamento.lower() in afastamentos:
+                    tem_afastamento_impeditivo = True
+                    break
+            
+            # Verificar afastamentos que precisam de decisão
+            if not tem_afastamento_impeditivo:
+                for afastamento in afastamentos_decisao:
+                    if afastamento.lower() in afastamentos:
+                        tem_afastamento_decisao = True
+                        break
+            
+            # Verificar se tem apenas afastamentos permitidos
+            tem_apenas_permitidos = not tem_afastamento_impeditivo and not tem_afastamento_decisao
+        
+        # Calcular valor do prêmio
+        valor_premio = 0
+        if func['Qtd_Horas_Mensais'] == 220:
+            valor_premio = 300.00
+        elif func['Qtd_Horas_Mensais'] <= 110:
+            valor_premio = 150.00
+        
+        # Determinar status
+        status = "Não tem direito"
+        total_atrasos = ""
+        
+        if not tem_afastamento_impeditivo:
+            if tem_afastamento_decisao:
+                status = "Aguardando decisão"
+                if not ausencias.empty and 'Atrasos' in ausencias.columns:
+                    total_atrasos = ausencias['Atrasos'].iloc[0]
+            elif tem_apenas_permitidos or ausencias.empty:
+                status = "Tem direito"
+        
+        # Adicionar ao resultado
+        resultados.append({
+            'Matricula': func['Matricula'],
+            'Nome': func['Nome_Funcionario'],
+            'Cargo': func['Cargo'],
+            'Local': func['Nome_Local'],
+            'Horas_Mensais': func['Qtd_Horas_Mensais'],
+            'Data_Admissao': func['Data_Admissao'],
+            'Valor_Premio': valor_premio if status == "Tem direito" else 0,
+            'Status': f"{status} (Total Atrasos: {total_atrasos})" if status == "Aguardando decisão" and total_atrasos else status,
+            'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else ''
+        })
+    
+    return pd.DataFrame(resultados)
+
 def main():
     st.set_page_config(page_title="Sistema de Verificação de Prêmios", page_icon="🏆", layout="wide")
     st.title("Sistema de Verificação de Prêmios")
@@ -85,8 +172,7 @@ def main():
         data_limite = st.date_input(
             "Data Limite de Admissão",
             help="Funcionários admitidos após esta data não terão direito ao prêmio",
-            value=datetime.now(),
-            format="DD/MM/YYYY"
+            value=datetime.now()
         )
         
         st.subheader("Base de Funcionários")
