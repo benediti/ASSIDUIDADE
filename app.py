@@ -1,6 +1,6 @@
-from datetime import datetime
 import pandas as pd
 import streamlit as st
+from datetime import datetime
 import os
 import logging
 import io
@@ -87,9 +87,13 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         "Folga Gestor", "Abonado Gerencia Loja",
         "Confraternização universal", "Aniversario de São Paulo"
     ]
-    
-    df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], format='%d/%m/%Y')
-    df_funcionarios = df_funcionarios[df_funcionarios['Data_Admissao'] <= pd.to_datetime(data_limite_admissao)]
+
+    if isinstance(data_limite_admissao, str):
+        data_limite_admissao = pd.to_datetime(data_limite_admissao)
+
+    df_funcionarios['Data_Admissao'] = pd.to_datetime(df_funcionarios['Data_Admissao'], errors='coerce')
+    df_funcionarios = df_funcionarios.dropna(subset=['Data_Admissao'])
+    df_funcionarios = df_funcionarios[df_funcionarios['Data_Admissao'] <= data_limite_admissao]
     
     resultados = []
     for _, func in df_funcionarios.iterrows():
