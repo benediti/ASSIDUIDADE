@@ -234,6 +234,7 @@ def main():
             df_ausencias = pd.read_excel(uploaded_ausencias)
             df_ausencias = processar_ausencias(df_ausencias)
             
+            data_limite = pd.to_datetime(data_limite)  # Certifique-se de que data_limite seja datetime64[ns]
             df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
             
             st.subheader("Resultado do Cálculo de Prêmios")
