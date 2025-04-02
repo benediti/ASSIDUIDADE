@@ -495,4 +495,194 @@ def editar_valores_status(df):
     elif ordem == "Matrícula (Decrescente)":
         df_filtrado = df_filtrado.sort_values('Matricula', ascending=False)
     
-    #
+    # Métricas
+    st.subheader("Métricas do Filtro Atual")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Funcionários exibidos", len(df_filtrado))
+    with col2:
+        st.metric("Total com direito", len(df_filtrado[df_filtrado['Status'] == 'Tem direito']))
+    with col3:
+        st.metric("Valor total dos prêmios", f"R$ {df_filtrado['Valor_Premio'].sum():,.2f}")
+    
+    # Mostrar mensagem de sucesso se houver
+    if st.session_state.show_success:
+        st.success(f"✅ Alterações salvas com sucesso para {st.session_state.last_saved}!")
+        st.session_state.show_success = False
+    
+    # Editor de dados por linhas individuais
+    st.subheader("Editor de Dados")
+    
+    for idx, row in df_filtrado.iterrows():
+        with st.expander(
+            f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", 
+            expanded=st.session_state.expanded_item == idx
+        ):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                novo_status = st.selectbox(
+                    "Status",
+                    options=status_options[1:],
+                    index=status_options[1:].index(row['Status']) if row['Status'] in status_options[1:] else 0,
+                    key=f"status_{idx}_{row['Matricula']}"
+                )
+                
+                novo_valor = st.number_input(
+                    "Valor do Prêmio",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=float(row['Valor_Premio']),
+                    step=50.0,
+                    format="%.2f",
+                    key=f"valor_{idx}_{row['Matricula']}"
+                )
+            
+            with col2:
+                nova_obs = st.text_area(
+                    "Observações",
+                    value=row.get('Observacoes', ''),
+                    key=f"obs_{idx}_{row['Matricula']}"
+                )
+            
+            if st.button("Salvar Alterações", key=f"save_{idx}_{row['Matricula']}"):
+                salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, row['Nome'])
+    
+    # Botões de ação geral
+    st.subheader("Ações Gerais")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Reverter Todas as Alterações", key="revert_all_unique"):
+            st.session_state.modified_df = df.copy()
+            st.session_state.expanded_item = None
+            st.session_state.show_success = False
+            st.warning("⚠️ Todas as alterações foram revertidas!")
+    
+    with col2:
+        if st.button("Exportar Arquivo Final", key="export_unique"):
+            output = exportar_novo_excel(st.session_state.modified_df)
+            st.download_button(
+                label="📥 Baixar Arquivo Excel",
+                data=output,
+                file_name="funcionarios_premios.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_unique"
+            )
+    
+    return st.session_state.modified_df
+
+# Interface Streamlit
+st.sidebar.header("Upload de Arquivos")
+
+# Upload dos arquivos Excel
+arquivo_ausencias = st.sidebar.file_uploader("Arquivo de Ausências", type=["xlsx", "xls"])
+arquivo_funcionarios = st.sidebar.file_uploader("Arquivo de Funcionários", type=["xlsx", "xls"])
+arquivo_afastamentos = st.sidebar.file_uploader("Arquivo de Afastamentos (opcional)", type=["xlsx", "xls"])
+
+# Data limite de admissão
+st.sidebar.header("Data Limite de Admissão")
+data_limite = st.sidebar.date_input(
+    "Considerar apenas funcionários admitidos até:",
+    value=datetime(2025, 3, 1),
+    format="DD/MM/YYYY"
+)
+
+# Tabs para diferenciar processamento e edição
+tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
+
+with tab1:
+    # Botão para processar
+    processar = st.button("Processar Dados")
+
+    # Processamento
+    if processar:
+        if arquivo_ausencias is not None and arquivo_funcionarios is not None:
+            with st.spinner("Processando arquivos..."):
+                # Carrega os dados
+                df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
+                df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
+                df_afastamentos = carregar_arquivo_afastamentos(arquivo_afastamentos)
+                
+                # Converte data limite para string no formato brasileiro
+                data_limite_str = data_limite.strftime("%d/%m/%Y")
+                
+                # Processa os dados sem filtro de mês
+                resultado = processar_dados(
+                    df_ausencias, 
+                    df_funcionarios, 
+                    df_afastamentos,
+                    data_limite_admissao=data_limite_str
+                )
+                
+                if not resultado.empty:
+                    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+                    
+                    # Guardamos o resultado no session_state para a tab de edição
+                    st.session_state.resultado_processado = resultado
+                    
+                    # Colunas a serem removidas da exibição
+                    colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência']
+                    
+                    # Criando uma cópia do DataFrame para exibição, mantendo a coluna 'Cor'
+                    df_exibir = resultado.drop(columns=[col for col in colunas_esconder if col in resultado.columns])
+                    
+                    # Função de highlight baseada na coluna 'Cor' que ainda está presente
+                    def highlight_row(row):
+                        cor = row['Cor']
+                        if cor == 'vermelho':
+                            return ['background-color: #FFCCCC'] * len(row)
+                        elif cor == 'verde':
+                            return ['background-color: #CCFFCC'] * len(row)
+                        elif cor == 'azul':
+                            return ['background-color: #CCCCFF'] * len(row)
+                        else:
+                            return [''] * len(row)
+                    
+                    # Exibe os resultados com a coluna 'Cor' ainda presente para formatação
+                    st.subheader("Resultados Preliminares")
+                    st.dataframe(df_exibir.style.apply(highlight_row, axis=1))
+                    
+                    # Resumo de valores
+                    total_a_pagar = df_exibir['Valor_Premio'].sum()
+                    contagem_por_status = df_exibir['Status'].value_counts()
+                    
+                    st.subheader("Resumo")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
+                    
+                    with col2:
+                        st.write("Contagem por Status:")
+                        st.write(contagem_por_status)
+                    
+                    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+                else:
+                    st.warning("Nenhum resultado encontrado.")
+        else:
+            st.warning("Por favor, faça o upload dos arquivos necessários.")
+
+with tab2:
+    if 'resultado_processado' in st.session_state:
+        # Usa a função editar_valores_status do utils.py
+        df_final = editar_valores_status(st.session_state.resultado_processado)
+    else:
+        st.info("Por favor, primeiro processe os dados na aba 'Processamento Inicial'.")
+
+# Exibe informações de uso
+st.sidebar.markdown("---")
+st.sidebar.info("""
+**Como usar:**
+1. Faça o upload dos arquivos necessários
+2. Defina a data limite de admissão
+3. Na aba 'Processamento Inicial', clique em 'Processar Dados'
+4. Na aba 'Edição e Exportação', revise e ajuste os valores individuais
+5. Exporte o resultado final usando o botão 'Exportar Arquivo Final'
+
+**Regras de pagamento:**
+- Funcionários com salário acima de R$ 2.542,86 não têm direito
+- Faltas e afastamentos bloqueiam o pagamento
+- Ausências necessitam avaliação
+- Pagamentos: 220h = R$300,00, 110/120h = R$150,00
+""")
