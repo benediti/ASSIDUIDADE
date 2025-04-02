@@ -231,6 +231,7 @@ def aplicar_regras_pagamento(df):
     df['Valor a Pagar'] = 0.0
     df['Status'] = ''
     df['Cor'] = ''
+    df['Observacoes'] = ''  # Adiciona coluna de observações
     
     # Processa cada linha
     for idx, row in df.iterrows():
@@ -257,39 +258,52 @@ def aplicar_regras_pagamento(df):
         tem_afastamento = row.get('Tem Afastamento', False)
         tem_ausencia = row.get('Tem Ausência', False)
         
-        # Aplicar regras na ordem correta
-        # Primeiro verifica se o salário está abaixo do limite para ter direito
+        # Aplicar regras na ordem correta e definir status conforme utils.py
         if salario >= 2542.86:
             df.at[idx, 'Valor a Pagar'] = 0.00
-            df.at[idx, 'Status'] = 'Não paga - Salário acima do limite'
+            df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
-        # Depois aplica as outras regras
+            df.at[idx, 'Observacoes'] = 'Salário acima do limite'
         elif tem_falta:
             df.at[idx, 'Valor a Pagar'] = 0.00
-            df.at[idx, 'Status'] = 'Não paga - Tem falta'
+            df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
+            df.at[idx, 'Observacoes'] = 'Tem falta'
         elif tem_afastamento:
             df.at[idx, 'Valor a Pagar'] = 0.00
-            df.at[idx, 'Status'] = 'Não paga - Tem afastamento'
+            df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
+            df.at[idx, 'Observacoes'] = 'Tem afastamento'
         elif tem_ausencia:
             df.at[idx, 'Valor a Pagar'] = 0.00
-            df.at[idx, 'Status'] = 'Avaliar - Tem ausência'
+            df.at[idx, 'Status'] = 'Aguardando decisão'
             df.at[idx, 'Cor'] = 'azul'
+            df.at[idx, 'Observacoes'] = 'Tem ausência - Necessita avaliação'
         else:
             # Paga conforme as horas
             if horas == 220:
                 df.at[idx, 'Valor a Pagar'] = 300.00
-                df.at[idx, 'Status'] = 'Paga - 220 horas'
+                df.at[idx, 'Status'] = 'Tem direito'
                 df.at[idx, 'Cor'] = 'verde'
+                df.at[idx, 'Observacoes'] = '220 horas'
             elif horas == 110 or horas == 120:
                 df.at[idx, 'Valor a Pagar'] = 150.00
-                df.at[idx, 'Status'] = f'Paga - {horas} horas'
+                df.at[idx, 'Status'] = 'Tem direito'
                 df.at[idx, 'Cor'] = 'verde'
+                df.at[idx, 'Observacoes'] = f'{int(horas)} horas'
             else:
                 df.at[idx, 'Valor a Pagar'] = 0.00
-                df.at[idx, 'Status'] = 'Verificar horas trabalhadas'
+                df.at[idx, 'Status'] = 'Aguardando decisão'
                 df.at[idx, 'Cor'] = ''
+                df.at[idx, 'Observacoes'] = 'Verificar horas trabalhadas'
+    
+    # Renomeia colunas para compatibilidade com utils.py
+    df = df.rename(columns={
+        'Matrícula': 'Matricula',
+        'Nome Funcionário': 'Nome',
+        'Nome Local': 'Local',
+        'Valor a Pagar': 'Valor_Premio'
+    })
     
     return df
 
@@ -317,6 +331,183 @@ def preparar_para_excel(df):
     
     return df_limpo
 
+def exportar_novo_excel(df):
+    """
+    Exporta o DataFrame para Excel com formatação adequada.
+    Função baseada no utils.py.
+    """
+    output = BytesIO()
+    
+    df_direito = df[df['Status'].str.contains('Tem direito')].copy()
+    df_exportar = df_direito[['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']]
+    
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_exportar.to_excel(writer, index=False, sheet_name='Funcionários com Direito')
+        
+        resumo_data = [
+            ['RESUMO DO PROCESSAMENTO'],
+            [f'Data de Geração: {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")}'],
+            [''],
+            ['Métricas Gerais'],
+            [f'Total de Funcionários Processados: {len(df)}'],
+            [f'Total de Funcionários com Direito: {len(df_direito)}'],
+            [f'Valor Total dos Prêmios: R$ {df_direito["Valor_Premio"].sum():,.2f}'],
+        ]
+        
+        pd.DataFrame(resumo_data).to_excel(
+            writer, 
+            index=False, 
+            header=False, 
+            sheet_name='Resumo'
+        )
+    
+    output.seek(0)
+    return output.getvalue()
+
+def salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, nome):
+    """Função auxiliar para salvar alterações (baseada no utils.py)"""
+    st.session_state.modified_df.at[idx, 'Status'] = novo_status
+    st.session_state.modified_df.at[idx, 'Valor_Premio'] = novo_valor
+    st.session_state.modified_df.at[idx, 'Observacoes'] = nova_obs
+    st.session_state.expanded_item = idx
+    st.session_state.last_saved = nome
+    st.session_state.show_success = True
+
+def editar_valores_status(df):
+    """Função para editar os valores de pagamento e status (baseada no utils.py)"""
+    if 'modified_df' not in st.session_state:
+        st.session_state.modified_df = df.copy()
+    
+    if 'expanded_item' not in st.session_state:
+        st.session_state.expanded_item = None
+        
+    if 'show_success' not in st.session_state:
+        st.session_state.show_success = False
+        
+    if 'last_saved' not in st.session_state:
+        st.session_state.last_saved = None
+    
+    st.subheader("Filtro Principal")
+    
+    status_options = ["Todos", "Tem direito", "Não tem direito", "Aguardando decisão"]
+    
+    status_principal = st.selectbox(
+        "Selecione o status para visualizar:",
+        options=status_options,
+        index=0,
+        key="status_principal_filter_unique"
+    )
+    
+    df_filtrado = st.session_state.modified_df.copy()
+    if status_principal != "Todos":
+        df_filtrado = df_filtrado[df_filtrado['Status'] == status_principal]
+    
+    st.subheader("Buscar Funcionários")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        matricula_busca = st.text_input("Buscar por Matrícula", key="matricula_search_unique")
+    with col2:
+        nome_busca = st.text_input("Buscar por Nome", key="nome_search_unique")
+    with col3:
+        ordem = st.selectbox(
+            "Ordenar por:",
+            options=["Nome (A-Z)", "Nome (Z-A)", "Matrícula (Crescente)", "Matrícula (Decrescente)"],
+            key="ordem_select_unique"
+        )
+    
+    if matricula_busca:
+        df_filtrado = df_filtrado[df_filtrado['Matricula'].astype(str).str.contains(matricula_busca)]
+    if nome_busca:
+        df_filtrado = df_filtrado[df_filtrado['Nome'].str.contains(nome_busca, case=False)]
+    
+    # Ordenação
+    if ordem == "Nome (A-Z)":
+        df_filtrado = df_filtrado.sort_values('Nome')
+    elif ordem == "Nome (Z-A)":
+        df_filtrado = df_filtrado.sort_values('Nome', ascending=False)
+    elif ordem == "Matrícula (Crescente)":
+        df_filtrado = df_filtrado.sort_values('Matricula')
+    elif ordem == "Matrícula (Decrescente)":
+        df_filtrado = df_filtrado.sort_values('Matricula', ascending=False)
+    
+    # Métricas
+    st.subheader("Métricas do Filtro Atual")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Funcionários exibidos", len(df_filtrado))
+    with col2:
+        st.metric("Total com direito", len(df_filtrado[df_filtrado['Status'] == 'Tem direito']))
+    with col3:
+        st.metric("Valor total dos prêmios", f"R$ {df_filtrado['Valor_Premio'].sum():,.2f}")
+    
+    # Mostrar mensagem de sucesso se houver
+    if st.session_state.show_success:
+        st.success(f"✅ Alterações salvas com sucesso para {st.session_state.last_saved}!")
+        st.session_state.show_success = False
+    
+    # Editor de dados por linhas individuais
+    st.subheader("Editor de Dados")
+    
+    for idx, row in df_filtrado.iterrows():
+        with st.expander(
+            f"🧑‍💼 {row['Nome']} - Matrícula: {row['Matricula']}", 
+            expanded=st.session_state.expanded_item == idx
+        ):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                novo_status = st.selectbox(
+                    "Status",
+                    options=status_options[1:],
+                    index=status_options[1:].index(row['Status']) if row['Status'] in status_options[1:] else 0,
+                    key=f"status_{idx}_{row['Matricula']}"
+                )
+                
+                novo_valor = st.number_input(
+                    "Valor do Prêmio",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=float(row['Valor_Premio']),
+                    step=50.0,
+                    format="%.2f",
+                    key=f"valor_{idx}_{row['Matricula']}"
+                )
+            
+            with col2:
+                nova_obs = st.text_area(
+                    "Observações",
+                    value=row.get('Observacoes', ''),
+                    key=f"obs_{idx}_{row['Matricula']}"
+                )
+            
+            if st.button("Salvar Alterações", key=f"save_{idx}_{row['Matricula']}"):
+                salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, row['Nome'])
+    
+    # Botões de ação geral
+    st.subheader("Ações Gerais")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Reverter Todas as Alterações", key="revert_all_unique"):
+            st.session_state.modified_df = df.copy()
+            st.session_state.expanded_item = None
+            st.session_state.show_success = False
+            st.warning("⚠️ Todas as alterações foram revertidas!")
+    
+    with col2:
+        if st.button("Exportar Arquivo Final", key="export_unique"):
+            output = exportar_novo_excel(st.session_state.modified_df)
+            st.download_button(
+                label="📥 Baixar Arquivo Excel",
+                data=output,
+                file_name="funcionarios_premios.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_unique"
+            )
+    
+    return st.session_state.modified_df
+
 # Interface Streamlit
 st.sidebar.header("Upload de Arquivos")
 
@@ -333,151 +524,101 @@ data_limite = st.sidebar.date_input(
     format="DD/MM/YYYY"
 )
 
-# Botão para processar
-processar = st.sidebar.button("Processar Dados")
+# Tabs para diferenciar processamento e edição
+tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
 
-# Processamento
-if processar:
-    if arquivo_ausencias is not None and arquivo_funcionarios is not None:
-        with st.spinner("Processando arquivos..."):
-            # Carrega os dados
-            df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
-            df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
-            df_afastamentos = carregar_arquivo_afastamentos(arquivo_afastamentos)
-            
-            # Converte data limite para string no formato brasileiro
-            data_limite_str = data_limite.strftime("%d/%m/%Y")
-            
-            # Processa os dados sem filtro de mês
-            resultado = processar_dados(
-                df_ausencias, 
-                df_funcionarios, 
-                df_afastamentos,
-                data_limite_admissao=data_limite_str
-            )
-            
-            if not resultado.empty:
-                st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+with tab1:
+    # Botão para processar
+    processar = st.button("Processar Dados")
+
+    # Processamento
+    if processar:
+        if arquivo_ausencias is not None and arquivo_funcionarios is not None:
+            with st.spinner("Processando arquivos..."):
+                # Carrega os dados
+                df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
+                df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
+                df_afastamentos = carregar_arquivo_afastamentos(arquivo_afastamentos)
                 
-                # Colunas a serem removidas da exibição
-                colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência']
+                # Converte data limite para string no formato brasileiro
+                data_limite_str = data_limite.strftime("%d/%m/%Y")
                 
-                # Criando uma cópia do DataFrame para exibição, mantendo a coluna 'Cor'
-                df_exibir = resultado.drop(columns=[col for col in colunas_esconder if col in resultado.columns])
-                
-                # Função de highlight baseada na coluna 'Cor' que ainda está presente
-                def highlight_row(row):
-                    cor = row['Cor']
-                    if cor == 'vermelho':
-                        return ['background-color: #FFCCCC'] * len(row)
-                    elif cor == 'verde':
-                        return ['background-color: #CCFFCC'] * len(row)
-                    elif cor == 'azul':
-                        return ['background-color: #CCCCFF'] * len(row)
-                    else:
-                        return [''] * len(row)
-                
-                # Exibe os resultados com a coluna 'Cor' ainda presente para formatação
-                st.subheader("Resultados")
-                st.dataframe(df_exibir.style.apply(highlight_row, axis=1))
-                
-                # Agora remove a coluna 'Cor' para downloads
-                df_download = df_exibir.drop(columns=['Cor'])
-                
-                # Resumo de valores
-                total_a_pagar = df_download['Valor a Pagar'].sum()
-                contagem_por_status = df_download['Status'].value_counts()
-                
-                st.subheader("Resumo")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
-                
-                with col2:
-                    st.write("Contagem por Status:")
-                    st.write(contagem_por_status)
-                
-                # Data atual para o nome do arquivo
-                data_atual = datetime.now().strftime("%d-%m-%Y")
-                
-                # Botão para download CSV
-                csv = df_download.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download CSV",
-                    data=csv,
-                    file_name=f"resultado_ausencias_{data_atual}.csv",
-                    mime="text/csv"
+                # Processa os dados sem filtro de mês
+                resultado = processar_dados(
+                    df_ausencias, 
+                    df_funcionarios, 
+                    df_afastamentos,
+                    data_limite_admissao=data_limite_str
                 )
                 
-                # Preparar dados para Excel (limpar valores problemáticos)
-                df_excel = preparar_para_excel(df_download)
-                
-                # Botão para download do Excel
-                buffer = BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_excel.to_excel(writer, index=False, sheet_name='Resultado')
+                if not resultado.empty:
+                    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
                     
-                    # Acessa o objeto workbook e worksheet
-                    workbook = writer.book
-                    worksheet = writer.sheets['Resultado']
+                    # Guardamos o resultado no session_state para a tab de edição
+                    st.session_state.resultado_processado = resultado
                     
-                    # Adiciona formatos condicionais
-                    formato_vermelho = workbook.add_format({'bg_color': '#FFCCCC'})
-                    formato_verde = workbook.add_format({'bg_color': '#CCFFCC'})
-                    formato_azul = workbook.add_format({'bg_color': '#CCCCFF'})
+                    # Colunas a serem removidas da exibição
+                    colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência']
                     
-                    # Aplica formatação com base na coluna 'Cor' do DataFrame original
-                    for i, idx in enumerate(df_download.index):
-                        cor = resultado.loc[idx, 'Cor'] if 'Cor' in resultado.columns else ''
+                    # Criando uma cópia do DataFrame para exibição, mantendo a coluna 'Cor'
+                    df_exibir = resultado.drop(columns=[col for col in colunas_esconder if col in resultado.columns])
+                    
+                    # Função de highlight baseada na coluna 'Cor' que ainda está presente
+                    def highlight_row(row):
+                        cor = row['Cor']
                         if cor == 'vermelho':
-                            formato = formato_vermelho
+                            return ['background-color: #FFCCCC'] * len(row)
                         elif cor == 'verde':
-                            formato = formato_verde
+                            return ['background-color: #CCFFCC'] * len(row)
                         elif cor == 'azul':
-                            formato = formato_azul
+                            return ['background-color: #CCCCFF'] * len(row)
                         else:
-                            continue  # Pula linhas sem cor definida
-                            
-                        # Aplica o formato a toda a linha
-                        for j in range(len(df_excel.columns)):
-                            # Use formato básico para todos os valores
-                            value = df_excel.iloc[i, j]
-                            # Convertendo para string para evitar problemas com tipos de dados
-                            if pd.isna(value) or value is None:
-                                value = ""
-                            else:
-                                value = str(value)
-                            worksheet.write(i+1, j, value, formato)
-                
-                # Move o cursor para o início do buffer
-                buffer.seek(0)
-                
-                # Botão de download para o Excel
-                st.download_button(
-                    label="Download Excel",
-                    data=buffer,
-                    file_name=f"resultado_ausencias_{data_atual}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.warning("Nenhum resultado encontrado para o período selecionado.")
+                            return [''] * len(row)
+                    
+                    # Exibe os resultados com a coluna 'Cor' ainda presente para formatação
+                    st.subheader("Resultados Preliminares")
+                    st.dataframe(df_exibir.style.apply(highlight_row, axis=1))
+                    
+                    # Resumo de valores
+                    total_a_pagar = df_exibir['Valor_Premio'].sum()
+                    contagem_por_status = df_exibir['Status'].value_counts()
+                    
+                    st.subheader("Resumo")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
+                    
+                    with col2:
+                        st.write("Contagem por Status:")
+                        st.write(contagem_por_status)
+                    
+                    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+                else:
+                    st.warning("Nenhum resultado encontrado.")
+        else:
+            st.warning("Por favor, faça o upload dos arquivos necessários.")
+
+with tab2:
+    if 'resultado_processado' in st.session_state:
+        # Usa a função editar_valores_status do utils.py
+        df_final = editar_valores_status(st.session_state.resultado_processado)
     else:
-        st.warning("Por favor, faça o upload dos arquivos necessários.")
+        st.info("Por favor, primeiro processe os dados na aba 'Processamento Inicial'.")
 
 # Exibe informações de uso
 st.sidebar.markdown("---")
 st.sidebar.info("""
 **Como usar:**
-1. Faça o upload do arquivo de ausências
-2. Faça o upload do arquivo de funcionários
-3. Faça o upload do arquivo de afastamentos (opcional)
-4. Defina a data limite de admissão
-5. Clique em "Processar Dados"
-6. Veja os resultados e faça o download se necessário
+1. Faça o upload dos arquivos necessários
+2. Defina a data limite de admissão
+3. Na aba 'Processamento Inicial', clique em 'Processar Dados'
+4. Na aba 'Edição e Exportação', revise e ajuste os valores individuais
+5. Exporte o resultado final usando o botão 'Exportar Arquivo Final'
 
 **Regras de pagamento:**
-- Vermelho: Não paga (0,00)
-- Verde: Pagamento normal (R$ 300,00 ou R$ 150,00)
-- Azul: Avaliar caso a caso
+- Funcionários com salário acima de R$ 2.542,86 não têm direito
+- Faltas e afastamentos bloqueiam o pagamento
+- Ausências necessitam avaliação
+- Pagamentos: 220h = R$300,00, 110/120h = R$150,00
 """)
