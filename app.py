@@ -237,7 +237,8 @@ def aplicar_regras_pagamento(df):
     - Se tem ausência -> Avaliar (azul)
     - Se horas = 220 -> R$ 300,00 (verde)
     - Se horas = 110 ou 120 -> R$ 150,00 (verde)
-    - Se linha em branco -> Paga conforme horas
+    - Quem não tem nada na tabela de ausências e está dentro do filtro de salário 
+      e data de admissão tem direito.
     
     Regras de afastamentos:
     - Tem direito: Abonado Gerencia Loja, Abono Administrativo
@@ -328,10 +329,16 @@ def aplicar_regras_pagamento(df):
             except Exception:
                 horas = 0
         
-        # Verifica ocorrências
-        tem_falta = row.get('Tem Falta', False)
+        # Verifica se não tem NADA nas colunas de ausências/faltas/afastamentos
+        tem_ausencia_falta_afastamento = False
         
-        # Verifica o tipo de afastamento
+        # Verifica faltas
+        tem_falta = False
+        if 'Falta' in df.columns and not pd.isna(row['Falta']):
+            tem_falta = True
+            tem_ausencia_falta_afastamento = True
+        
+        # Verifica afastamento
         tem_afastamento = False
         tipo_afastamento = None
         afastamento_com_direito = False
@@ -340,6 +347,7 @@ def aplicar_regras_pagamento(df):
         
         if 'Afastamentos' in df.columns and not pd.isna(row['Afastamentos']):
             tem_afastamento = True
+            tem_ausencia_falta_afastamento = True
             tipo_afastamento = str(row['Afastamentos']).strip()
             
             # Verifica o tipo de afastamento
@@ -350,7 +358,12 @@ def aplicar_regras_pagamento(df):
             elif tipo_afastamento in afastamentos_sem_direito:
                 afastamento_sem_direito = True
         
-        tem_ausencia = row.get('Tem Ausência', False)
+        # Verifica ausências
+        tem_ausencia = False
+        if (('Ausência Integral' in df.columns and not pd.isna(row['Ausência Integral'])) or 
+            ('Ausência Parcial' in df.columns and not pd.isna(row['Ausência Parcial']))):
+            tem_ausencia = True
+            tem_ausencia_falta_afastamento = True
         
         # Aplicar regras na ordem correta
         if salario >= 2542.86:
@@ -406,17 +419,25 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Cor'] = 'azul'
             df.at[idx, 'Observacoes'] = 'Tem ausência - Necessita avaliação'
         else:
+            # Não tem ausência/falta/afastamento e está dentro do limite de salário
+            # REGRA: Quem não tem nada na tabela ausências e está dentro do filtro tem direito
             # Paga conforme as horas
             if horas == 220:
                 df.at[idx, 'Valor a Pagar'] = 300.00
                 df.at[idx, 'Status'] = 'Tem direito'
                 df.at[idx, 'Cor'] = 'verde'
-                df.at[idx, 'Observacoes'] = '220 horas'
+                df.at[idx, 'Observacoes'] = 'Sem ausências - 220 horas'
             elif horas == 110 or horas == 120:
                 df.at[idx, 'Valor a Pagar'] = 150.00
                 df.at[idx, 'Status'] = 'Tem direito'
                 df.at[idx, 'Cor'] = 'verde'
-                df.at[idx, 'Observacoes'] = f'{int(horas)} horas'
+                df.at[idx, 'Observacoes'] = f'Sem ausências - {int(horas)} horas'
+            elif not tem_ausencia_falta_afastamento:
+                # Não tem ausência/falta/afastamento, mas horas incomuns
+                df.at[idx, 'Valor a Pagar'] = 0.00
+                df.at[idx, 'Status'] = 'Tem direito'
+                df.at[idx, 'Cor'] = 'verde'
+                df.at[idx, 'Observacoes'] = f'Sem ausências - Verificar horas: {horas}'
             else:
                 df.at[idx, 'Valor a Pagar'] = 0.00
                 df.at[idx, 'Status'] = 'Aguardando decisão'
