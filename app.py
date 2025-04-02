@@ -235,14 +235,30 @@ def aplicar_regras_pagamento(df):
     
     # Processa cada linha
     for idx, row in df.iterrows():
-        # Verifica salário
+        # Verifica salário - FUNÇÃO CORRIGIDA
         salario = 0
         if 'Salário Mês Atual' in df.columns:
             try:
-                # Converte para float, tratando possíveis strings
-                salario_str = str(row['Salário Mês Atual']).replace('R$', '').replace('.', '').replace(',', '.')
-                salario = float(salario_str)
-            except (ValueError, TypeError):
+                # Obtém o valor do salário
+                salario_str = str(row['Salário Mês Atual'])
+                
+                # Verifica se o valor já está no formato numérico
+                if isinstance(row['Salário Mês Atual'], (int, float)):
+                    salario = float(row['Salário Mês Atual'])
+                else:
+                    # Remove caracteres não numéricos, exceto ponto decimal
+                    # Primeiro remove R$ e espaços
+                    salario_limpo = salario_str.replace('R$', '').replace(' ', '')
+                    
+                    # Usa ponto como separador decimal (já está assim na planilha)
+                    salario = float(salario_limpo)
+                    
+                # Imprimir para debug
+                # print(f"Matrícula: {row.get('Matricula', 'N/A')}, Nome: {row.get('Nome', 'N/A')}, Salário original: {salario_str}, Salário convertido: {salario}")
+                
+            except (ValueError, TypeError) as e:
+                # Imprimir para debug
+                # print(f"Erro ao converter salário: {e}, valor original: {row.get('Salário Mês Atual', 'N/A')}")
                 salario = 0
         
         # Verifica horas
@@ -263,7 +279,7 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Valor a Pagar'] = 0.00
             df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
-            df.at[idx, 'Observacoes'] = 'Salário acima do limite'
+            df.at[idx, 'Observacoes'] = f'Salário acima do limite: R$ {salario:.2f}'
         elif tem_falta:
             df.at[idx, 'Valor a Pagar'] = 0.00
             df.at[idx, 'Status'] = 'Não tem direito'
