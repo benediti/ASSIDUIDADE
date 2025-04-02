@@ -481,83 +481,44 @@ def aplicar_regras_pagamento(df):
     return df
 
 def exportar_novo_excel(df):
-    """
-    Exporta o DataFrame para Excel com todas as categorias (tem direito, não tem direito, aguardando decisão).
-    Cada categoria estará em uma aba separada.
-    """
     output = BytesIO()
     
-    # Separa os dados por status
-    df_tem_direito = df[df['Status'] == 'Tem direito'].copy()
-    df_nao_tem_direito = df[df['Status'] == 'Não tem direito'].copy()
-    df_aguardando = df[df['Status'] == 'Aguardando decisão'].copy()
-    
-    # Colunas comuns para exportação
+    # Definir as colunas para exportação
     colunas_exportar = ['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']
-    
-    # Verifica se existem outras colunas importantes (Cargo, Salário, etc.)
-    colunas_adicionais = []
     for coluna in ['Cargo', 'Salário Mês Atual', 'Qtd Horas Mensais']:
         if coluna in df.columns:
-            colunas_adicionais.append(coluna)
+            colunas_exportar.insert(0, coluna)
     
-    # Adiciona as colunas adicionais às colunas de exportação
-    colunas_exportar = colunas_adicionais + colunas_exportar
+    # Filtrar os DataFrames para cada status
+    df_tem_direito = df[df['Status'] == 'Tem direito'][colunas_exportar]
+    df_nao_tem_direito = df[df['Status'] == 'Não tem direito'][colunas_exportar]
+    df_aguardando = df[df['Status'] == 'Aguardando decisão'][colunas_exportar]
     
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Aba 1: Funcionários com direito
-        if not df_tem_direito.empty:
-            df_tem_direito[colunas_exportar].to_excel(
-                writer, 
-                index=False, 
-                sheet_name='Com Direito'
-            )
-            
-            # Formatação para a aba
-            workbook = writer.book
-            worksheet = writer.sheets['Com Direito']
-            format_green = workbook.add_format({'bg_color': '#CCFFCC'})
-            
-            # Aplica formatação verde
-            for i in range(len(df_tem_direito)):
-                for j in range(len(colunas_exportar)):
-                    worksheet.write(i+1, j, str(df_tem_direito.iloc[i][colunas_exportar[j]]), format_green)
+        # Aba: Funcionários com direito
+        df_tem_direito.to_excel(writer, index=False, sheet_name='Com Direito')
+        workbook = writer.book
+        worksheet = writer.sheets['Com Direito']
+        format_green = workbook.add_format({'bg_color': '#CCFFCC'})
+        for i in range(len(df_tem_direito)):
+            for j in range(len(colunas_exportar)):
+                worksheet.write(i+1, j, str(df_tem_direito.iloc[i][colunas_exportar[j]]), format_green)
         
-        # Aba 2: Funcionários sem direito
-        if not df_nao_tem_direito.empty:
-            df_nao_tem_direito[colunas_exportar].to_excel(
-                writer, 
-                index=False, 
-                sheet_name='Sem Direito'
-            )
-            
-            # Formatação para a aba
-            workbook = writer.book
-            worksheet = writer.sheets['Sem Direito']
-            format_red = workbook.add_format({'bg_color': '#FFCCCC'})
-            
-            # Aplica formatação vermelha
-            for i in range(len(df_nao_tem_direito)):
-                for j in range(len(colunas_exportar)):
-                    worksheet.write(i+1, j, str(df_nao_tem_direito.iloc[i][colunas_exportar[j]]), format_red)
+        # Aba: Funcionários sem direito
+        df_nao_tem_direito.to_excel(writer, index=False, sheet_name='Sem Direito')
+        worksheet = writer.sheets['Sem Direito']
+        format_red = workbook.add_format({'bg_color': '#FFCCCC'})
+        for i in range(len(df_nao_tem_direito)):
+            for j in range(len(colunas_exportar)):
+                worksheet.write(i+1, j, str(df_nao_tem_direito.iloc[i][colunas_exportar[j]]), format_red)
         
-        # Aba 3: Funcionários aguardando decisão
-        if not df_aguardando.empty:
-            df_aguardando[colunas_exportar].to_excel(
-                writer, 
-                index=False, 
-                sheet_name='Aguardando Decisão'
-            )
-            
-            # Formatação para a aba
-            workbook = writer.book
-            worksheet = writer.sheets['Aguardando Decisão']
-            format_blue = workbook.add_format({'bg_color': '#CCCCFF'})
-            
-            # Aplica formatação azul
-            for i in range(len(df_aguardando)):
-                for j in range(len(colunas_exportar)):
-                    worksheet.write(i+1, j, str(df_aguardando.iloc[i][colunas_exportar[j]]), format_blue)
+        # Aba: Funcionários aguardando decisão
+        df_aguardando.to_excel(writer, index=False, sheet_name='Aguardando Decisão')
+        worksheet = writer.sheets['Aguardando Decisão']
+        format_blue = workbook.add_format({'bg_color': '#CCCCFF'})
+        for i in range(len(df_aguardando)):
+            for j in range(len(colunas_exportar)):
+                worksheet.write(i+1, j, str(df_aguardando.iloc[i][colunas_exportar[j]]), format_blue)
         
         # Aba adicional: Resumo
         resumo_data = [
@@ -572,15 +533,11 @@ def exportar_novo_excel(df):
             [f'Valor Total dos Prêmios: R$ {df_tem_direito["Valor_Premio"].sum():,.2f}'],
         ]
         
-        pd.DataFrame(resumo_data).to_excel(
-            writer, 
-            index=False, 
-            header=False, 
-            sheet_name='Resumo'
-        )
+        pd.DataFrame(resumo_data).to_excel(writer, index=False, header=False, sheet_name='Resumo')
     
     output.seek(0)
     return output.getvalue()
+
 
 def salvar_alteracoes(idx, novo_status, novo_valor, nova_obs, nome):
     """Função auxiliar para salvar alterações (baseada no utils.py)"""
@@ -777,6 +734,11 @@ with tab1:
                     
                     # Colunas a serem removidas da exibição
                     colunas_esconder = ['Tem Falta', 'Tem Afastamento', 'Tem Ausência']
+
+                    # Colunas visualizar a contagem dos status
+                    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+                    st.write("Distribuição dos status:", st.session_state.resultado_processado['Status'].value_counts())
+
                     
                     # Criando uma cópia do DataFrame para exibição, mantendo a coluna 'Cor'
                     df_exibir = resultado.drop(columns=[col for col in colunas_esconder if col in resultado.columns])
