@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import warnings
+from io import BytesIO
 import os
 
 # Ignora avisos do pandas
@@ -374,7 +375,7 @@ if processar:
                     st.write("Contagem por Status:")
                     st.write(contagem_por_status)
                 
-                # Botão para download
+                # Botão para download CSV
                 csv = df_exibir.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download CSV",
@@ -383,17 +384,39 @@ if processar:
                     mime="text/csv"
                 )
                 
-                # Botão para download do Excel
-                buffer = pd.ExcelWriter(f"resultado_ausencias_{meses[mes_selecionado]}_{ano_selecionado}.xlsx", engine='xlsxwriter')
-                df_exibir.to_excel(buffer, index=False, sheet_name='Resultado')
-                buffer.save()
+                # Botão para download do Excel - VERSÃO CORRIGIDA
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df_exibir.to_excel(writer, index=False, sheet_name='Resultado')
+                    
+                    # Acessa o objeto workbook e worksheet
+                    workbook = writer.book
+                    worksheet = writer.sheets['Resultado']
+                    
+                    # Adiciona formatos condicionais
+                    formato_vermelho = workbook.add_format({'bg_color': '#FFCCCC'})
+                    formato_verde = workbook.add_format({'bg_color': '#CCFFCC'})
+                    formato_azul = workbook.add_format({'bg_color': '#CCCCFF'})
+                    
+                    # Aplica formatos baseados na coluna Status
+                    for i, valor in enumerate(df_exibir['Status']):
+                        if 'Não paga' in str(valor):
+                            for j in range(len(df_exibir.columns)):
+                                worksheet.write(i+1, j, df_exibir.iloc[i, j], formato_vermelho)
+                        elif 'Paga' in str(valor):
+                            for j in range(len(df_exibir.columns)):
+                                worksheet.write(i+1, j, df_exibir.iloc[i, j], formato_verde)
+                        elif 'Avaliar' in str(valor):
+                            for j in range(len(df_exibir.columns)):
+                                worksheet.write(i+1, j, df_exibir.iloc[i, j], formato_azul)
                 
-                with open(f"resultado_ausencias_{meses[mes_selecionado]}_{ano_selecionado}.xlsx", "rb") as f:
-                    excel_data = f.read()
+                # Move o cursor para o início do buffer
+                buffer.seek(0)
                 
+                # Botão de download para o Excel
                 st.download_button(
                     label="Download Excel",
-                    data=excel_data,
+                    data=buffer,
                     file_name=f"resultado_ausencias_{meses[mes_selecionado]}_{ano_selecionado}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
