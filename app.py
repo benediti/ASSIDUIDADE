@@ -357,27 +357,141 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 if not resultado.empty:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    # Converter todas as colunas para string para exibição
-                    df_display = resultado.copy()
-                    for col in df_display.columns:
-                        df_display[col] = df_display[col].astype(str)
-                    st.write("Primeiras linhas do DataFrame:")
-                    st.write(df_display.head())
-                    st.write("Tipos de dados das colunas:")
-                    st.write(df_display.dtypes)
-                    st.write("Distribuição dos status:", df_display['Status'].value_counts())
-                    st.subheader("Resultados Preliminares")
-                    st.dataframe(df_display)
-                    total_a_pagar = resultado['Valor_Premio'].sum()
-                    contagem_por_status = resultado['Status'].value_counts()
-                    st.subheader("Resumo")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
-                    with col2:
-                        st.write("Contagem por Status:")
-                        st.write(contagem_por_status)
-                    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+                    
+                    # Store the result in session state for access in the second tab
+                    st.session_state.resultado_processado = resultado
+                    
+                    # Fix: Handle DataFrame display to prevent PyArrow conversion errors
+                    try:
+                        # First check for duplicate columns and fix them
+                        duplicate_cols = resultado.columns[resultado.columns.duplicated()]
+                        if not duplicate_cols.empty:
+                            st.warning(f"Colunas duplicadas encontradas: {list(duplicate_cols)}")
+                            # Rename duplicates
+                            new_cols = []
+                            seen = set()
+                            for col in resultado.columns:
+                                if col in seen:
+                                    i = 1
+                                    new_col = f"{col}_{i}"
+                                    while new_col in seen:
+                                        i += 1
+                                        new_col = f"{col}_{i}"
+                                    new_cols.append(new_col)
+                                    seen.add(new_col)
+                                else:
+                                    new_cols.append(col)
+                                    seen.add(col)
+                            resultado.columns = new_cols
+                            st.success("Colunas duplicadas foram renomeadas.")
+                        
+                        # First convert problematic columns to string to avoid display issues
+                        df_display = resultado.copy()
+                        
+                        # Ensure all columns have proper types before display
+                        for col in df_display.columns:
+                            # Convert to string to avoid PyArrow conversion issues
+                            df_display[col] = df_display[col].astype(str)
+                            
+                        # Handle duplicate columns before display
+                        if any(df_display.columns.duplicated()):
+                            # Rename duplicate columns
+                            new_cols = []
+                            seen = set()
+                            for col in df_display.columns:
+                                if col in seen:
+                                    i = 1
+                                    new_col = f"{col}_{i}"
+                                    while new_col in seen:
+                                        i += 1
+                                        new_col = f"{col}_{i}"
+                                    new_cols.append(new_col)
+                                    seen.add(new_col)
+                                else:
+                                    new_cols.append(col)
+                                    seen.add(col)
+                            df_display.columns = new_cols
+                        
+                        # Debugging
+                        st.write("Tipos de dados antes de exibir:")
+                        st.write(df_display.dtypes)
+                        debug_dataframe(df_display)
+                        
+                        # Safe display of DataFrame head - use HTML instead of st.dataframe
+                        st.write("#### Primeiras linhas do DataFrame:")
+                        html_table = "<div style='max-height: 300px; overflow-y: auto;'><table style='width:100%; border-collapse: collapse;'>"
+                        
+                        # Add table header
+                        html_table += "<tr>"
+                        for col in df_display.columns:
+                            html_table += f"<th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>{col}</th>"
+                        html_table += "</tr>"
+                        
+                        # Add first 5 rows
+                        for i in range(min(5, len(df_display))):
+                            html_table += "<tr>"
+                            for col in df_display.columns:
+                                html_table += f"<td style='border: 1px solid #ddd; padding: 8px;'>{df_display.iloc[i][col]}</td>"
+                            html_table += "</tr>"
+                        
+                        html_table += "</table></div>"
+                        st.markdown(html_table, unsafe_allow_html=True)
+                        
+                        # Show column data types
+                        st.write("Tipos de dados das colunas:")
+                        st.write(pd.DataFrame(df_display.dtypes, columns=['Tipo de Dado']))
+                        
+                        # Show status distribution
+                        st.write("#### Distribuição dos status:")
+                        try:
+                            status_counts = df_display['Status'].value_counts()
+                            
+                            # Create HTML table for status counts
+                            html_table = "<table style='width:50%; border-collapse: collapse;'>"
+                            html_table += "<tr><th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>Status</th>"
+                            html_table += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>Quantidade</th></tr>"
+                            
+                            for status, count in status_counts.items():
+                                html_table += f"<tr><td style='border: 1px solid #ddd; padding: 8px;'>{status}</td>"
+                                html_table += f"<td style='border: 1px solid #ddd; padding: 8px;'>{count}</td></tr>"
+                            
+                            html_table += "</table>"
+                            st.markdown(html_table, unsafe_allow_html=True)
+                        except Exception as e:
+                            st.write(f"Erro ao mostrar distribuição de status: {str(e)}")
+                            st.write("Status únicos:", list(df_display['Status'].unique()))
+                        
+                        # Show complete dataframe with filtering capability
+                        st.subheader("Resultados Preliminares")
+                        st.dataframe(df_display)
+                        
+                        # Summary metrics
+                        total_a_pagar = resultado['Valor_Premio'].sum()
+                        contagem_por_status = resultado['Status'].value_counts()
+                        
+                        st.subheader("Resumo")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
+                        with col2:
+                            st.write("Contagem por Status:")
+                            st.write(contagem_por_status)
+                        
+                        # Provide export option
+                        excel_data = exportar_novo_excel(resultado)
+                        st.download_button(
+                            label="Baixar Resultados (Excel)",
+                            data=excel_data,
+                            file_name=f"resultado_ausencias_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
+                        st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+                    except Exception as e:
+                        st.error(f"Erro ao exibir dados: {str(e)}")
+                        st.write("Exibindo informações resumidas para evitar erros:")
+                        st.write(f"Total de registros: {len(resultado)}")
+                        st.write(f"Colunas: {', '.join(resultado.columns.tolist())}")
                 else:
                     st.warning("Nenhum resultado encontrado.")
         else:
