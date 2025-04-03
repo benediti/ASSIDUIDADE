@@ -466,24 +466,37 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 
                 if not resultado.empty:
-                    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    st.write("Distribuição dos status:", resultado['Status'].value_counts())
-                    
-                    st.subheader("Resultados Preliminares")
-                    st.dataframe(resultado)
-                    
-                    total_a_pagar = resultado['Valor_Premio'].sum()
-                    contagem_por_status = resultado['Status'].value_counts()
-                    
-                    st.subheader("Resumo")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
-                    with col2:
-                        st.write("Contagem por Status:")
-                        st.write(contagem_por_status)
-                    
-                    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+    
+    # Imprime as primeiras linhas do DataFrame
+    st.write("Primeiras linhas do DataFrame:")
+    st.write(resultado.head())
+    
+    # Verifica os tipos de dados de cada coluna
+    st.write("Tipos de dados das colunas:")
+    st.write(resultado.dtypes)
+    
+    # Exibe a distribuição dos status
+    st.write("Distribuição dos status:", resultado['Status'].value_counts())
+    
+    st.subheader("Resultados Preliminares")
+    st.dataframe(resultado)
+    
+    total_a_pagar = resultado['Valor_Premio'].sum()
+    contagem_por_status = resultado['Status'].value_counts()
+    
+    st.subheader("Resumo")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
+    with col2:
+        st.write("Contagem por Status:")
+        st.write(contagem_por_status)
+    
+    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+else:
+    st.warning("Nenhum resultado encontrado.")
+
                 else:
                     st.warning("Nenhum resultado encontrado.")
         else:
