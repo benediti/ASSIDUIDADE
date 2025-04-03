@@ -24,14 +24,12 @@ def converter_data_br_para_datetime(data_str):
         return data_str
         
     try:
-        # Se for uma string, tenta converter do formato brasileiro DD/MM/YYYY
         if isinstance(data_str, str):
             return datetime.strptime(data_str, '%d/%m/%Y')
         else:
-            return data_str  # Se já for outro tipo (como timestamp), retorna como está
+            return data_str
     except (ValueError, TypeError):
         try:
-            # Caso falhe, tenta outros formatos comuns
             for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d-%m-%Y']:
                 try:
                     return datetime.strptime(str(data_str), fmt)
@@ -42,12 +40,8 @@ def converter_data_br_para_datetime(data_str):
             return None
 
 def carregar_arquivo_ausencias(uploaded_file):
-    """
-    Carrega o arquivo de ausências e converte colunas de data corretamente.
-    """
     try:
         df = pd.read_excel(uploaded_file)
-        # Normaliza os nomes das colunas
         df.columns = [col.strip() for col in df.columns]
         
         if 'Dia' in df.columns:
@@ -64,9 +58,6 @@ def carregar_arquivo_ausencias(uploaded_file):
         return pd.DataFrame()
 
 def carregar_arquivo_funcionarios(uploaded_file):
-    """
-    Carrega o arquivo de funcionários e converte colunas de data corretamente.
-    """
     try:
         df = pd.read_excel(uploaded_file)
         df.columns = [col.strip() for col in df.columns]
@@ -93,9 +84,6 @@ def carregar_arquivo_funcionarios(uploaded_file):
         return pd.DataFrame()
 
 def carregar_arquivo_afastamentos(uploaded_file):
-    """
-    Carrega o arquivo de afastamentos, se existir.
-    """
     if uploaded_file is None:
         return pd.DataFrame()
     
@@ -108,20 +96,12 @@ def carregar_arquivo_afastamentos(uploaded_file):
         return pd.DataFrame()
 
 def consolidar_dados_funcionario(df_combinado):
-    """
-    Consolida os dados para que cada funcionário apareça apenas uma vez,
-    mantendo todas as informações da tabela de ausências.
-    """
     if df_combinado.empty:
         return df_combinado
 
     dados_consolidados = []
-    
-    # Agrupa por Matricula para que cada funcionário apareça uma vez
     for matricula, grupo in df_combinado.groupby('Matricula'):
         funcionario = grupo.iloc[0].copy()
-        
-        # Verifica se há ausência, falta ou afastamento em qualquer registro do grupo
         tem_falta = False
         if 'Falta' in df_combinado.columns:
             tem_falta = grupo['Falta'].notna().any()
@@ -134,7 +114,6 @@ def consolidar_dados_funcionario(df_combinado):
         if ('Ausência Integral' in df_combinado.columns) and ('Ausência Parcial' in df_combinado.columns):
             tem_ausencia = grupo['Ausência Integral'].notna().any() or grupo['Ausência Parcial'].notna().any()
         
-        # Acrescenta as colunas auxiliares
         funcionario['Tem Falta'] = tem_falta
         funcionario['Tem Afastamento'] = tem_afastamento
         funcionario['Tem Ausência'] = tem_ausencia
@@ -145,24 +124,18 @@ def consolidar_dados_funcionario(df_combinado):
     return df_consolidado
 
 def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=None):
-    """
-    Processa os dados sem filtro de mês.
-    """
     if df_ausencias.empty or df_funcionarios.empty:
         st.warning("Um ou mais arquivos não puderam ser carregados corretamente.")
         return pd.DataFrame()
     
-    # Converte a data limite de admissão
     if data_limite_admissao:
         data_limite = converter_data_br_para_datetime(data_limite_admissao)
     else:
         data_limite = None
     
-    # Filtra funcionários pela data limite de admissão, se especificado
     if data_limite is not None:
         df_funcionarios = df_funcionarios[df_funcionarios['Data Admissão'] <= data_limite]
     
-    # Mescla os dados de ausências com os dados de funcionários usando "Matricula" como chave
     if 'Matricula' in df_ausencias.columns and 'Matricula' in df_funcionarios.columns:
         df_ausencias['Matricula'] = df_ausencias['Matricula'].astype(str)
         df_funcionarios['Matricula'] = df_funcionarios['Matricula'].astype(str)
@@ -175,7 +148,6 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
             how='left'
         )
         
-        # Inclui os dados de afastamentos, se existirem
         if not df_afastamentos.empty:
             if 'Matricula' in df_afastamentos.columns:
                 df_afastamentos['Matricula'] = df_afastamentos['Matricula'].astype(str)
@@ -196,31 +168,11 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
         return pd.DataFrame()
 
 def aplicar_regras_pagamento(df):
-    """
-    Aplica as regras de pagamento conforme os critérios especificados:
-    
-    - Se o cargo for um dos que não têm direito, marca imediatamente como "Não tem direito".
-    - Se o salário for igual ou superior a R$ 2.542,86, marca como "Não tem direito".
-    - Se houver falta, marca como "Não tem direito".
-    - Se houver registro de afastamento, verifica:
-         * Se o afastamento for dos que NÃO dão direito, marca como "Não tem direito".
-         * Se o afastamento for de "Atraso", marca como "Aguardando decisão".
-         * Se o afastamento for dos que dão direito (Abonado Gerencia Loja ou Abono Administrativo),
-           segue para o cálculo baseado nas horas.
-         * Se o tipo de afastamento não for identificado, marca como "Aguardando decisão".
-    - Se houver ausência (Ausência Integral ou Parcial), marca como "Aguardando decisão".
-    - Caso não haja nenhum impeditivo, calcula o valor a pagar com base na quantidade de horas:
-         * 220 horas = R$ 300,00
-         * 110 ou 120 horas = R$ 150,00
-         * Caso contrário, marca como "Aguardando decisão" para verificação de horas.
-    """
-    # Inicializa as colunas necessárias
     df['Valor a Pagar'] = 0.0
     df['Status'] = ''
     df['Cor'] = ''
     df['Observacoes'] = ''
 
-    # Lista de cargos que não têm direito
     funcoes_sem_direito = [
         'AUX DE SERV GERAIS (INT)', 
         'AUX DE LIMPEZA (INT)',
@@ -229,7 +181,6 @@ def aplicar_regras_pagamento(df):
         'PORTEIRO INTERMITENTE'
     ]
     
-    # Listas de afastamentos
     afastamentos_com_direito = [
         'Abonado Gerencia Loja', 
         'Abono Administrativo'
@@ -258,9 +209,7 @@ def aplicar_regras_pagamento(df):
         'Licença Maternidade'
     ]
     
-    # Processa cada funcionário
     for idx, row in df.iterrows():
-        # 1. Verifica o cargo
         cargo = str(row.get('Cargo', '')).strip()
         if cargo in funcoes_sem_direito:
             df.at[idx, 'Valor a Pagar'] = 0.0
@@ -269,7 +218,6 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Observacoes'] = f'Cargo sem direito: {cargo}'
             continue
         
-        # 2. Verifica o salário
         salario = 0
         salario_original = row.get('Salário Mês Atual', 0)
         try:
@@ -292,7 +240,6 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Observacoes'] = f'Salário acima do limite: R$ {salario:.2f}'
             continue
 
-        # 3. Verifica faltas
         if 'Falta' in df.columns and not pd.isna(row.get('Falta')):
             df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Não tem direito'
@@ -300,7 +247,6 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Observacoes'] = 'Tem falta'
             continue
 
-        # 4. Verifica afastamentos
         if 'Afastamentos' in df.columns and not pd.isna(row.get('Afastamentos')):
             tipo_afastamento = str(row.get('Afastamentos')).strip()
             
@@ -317,7 +263,6 @@ def aplicar_regras_pagamento(df):
                 df.at[idx, 'Observacoes'] = f'Afastamento para avaliar: {tipo_afastamento}'
                 continue
             elif tipo_afastamento in afastamentos_com_direito:
-                # Se o afastamento dá direito, continua para a verificação das horas
                 pass
             else:
                 df.at[idx, 'Valor a Pagar'] = 0.0
@@ -326,7 +271,6 @@ def aplicar_regras_pagamento(df):
                 df.at[idx, 'Observacoes'] = f'Afastamento não classificado: {tipo_afastamento}'
                 continue
 
-        # 5. Verifica ausências (se houver)
         if (('Ausência Integral' in df.columns and not pd.isna(row.get('Ausência Integral'))) or 
             ('Ausência Parcial' in df.columns and not pd.isna(row.get('Ausência Parcial')))):
             df.at[idx, 'Valor a Pagar'] = 0.0
@@ -335,7 +279,6 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Observacoes'] = 'Tem ausência - Necessita avaliação'
             continue
 
-        # 6. Se não houve nenhum impeditivo, calcula com base na quantidade de horas
         horas = 0
         if 'Qtd Horas Mensais' in df.columns:
             try:
@@ -364,7 +307,6 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Cor'] = 'azul'
             df.at[idx, 'Observacoes'] = f'Sem ausências - verificar horas: {horas}'
 
-    # Renomeia colunas para compatibilidade na exportação
     df = df.rename(columns={
         'Matricula': 'Matricula',
         'Nome Funcionário': 'Nome',
@@ -377,23 +319,19 @@ def aplicar_regras_pagamento(df):
 def exportar_novo_excel(df):
     output = BytesIO()
     
-    # Define as colunas adicionais: além das que já temos, inclui as da ausências
     colunas_adicionais = []
     for coluna in ['Cargo', 'Salário Mês Atual', 'Qtd Horas Mensais', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']:
         if coluna in df.columns:
             colunas_adicionais.append(coluna)
     
-    # Colunas principais que queremos sempre incluir
     colunas_principais = ['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']
     colunas_exportar = colunas_adicionais + colunas_principais
     
-    # Filtra os DataFrames para cada status
     df_tem_direito = df[df['Status'] == 'Tem direito'][colunas_exportar]
     df_nao_tem_direito = df[df['Status'] == 'Não tem direito'][colunas_exportar]
     df_aguardando = df[df['Status'] == 'Aguardando decisão'][colunas_exportar]
     
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Aba: Funcionários com direito
         df_tem_direito.to_excel(writer, index=False, sheet_name='Com Direito')
         workbook = writer.book
         worksheet = writer.sheets['Com Direito']
@@ -402,7 +340,6 @@ def exportar_novo_excel(df):
             for j in range(len(colunas_exportar)):
                 worksheet.write(i+1, j, str(df_tem_direito.iloc[i][colunas_exportar[j]]), format_green)
         
-        # Aba: Funcionários sem direito
         df_nao_tem_direito.to_excel(writer, index=False, sheet_name='Sem Direito')
         worksheet = writer.sheets['Sem Direito']
         format_red = workbook.add_format({'bg_color': '#FFCCCC'})
@@ -410,7 +347,6 @@ def exportar_novo_excel(df):
             for j in range(len(colunas_exportar)):
                 worksheet.write(i+1, j, str(df_nao_tem_direito.iloc[i][colunas_exportar[j]]), format_red)
         
-        # Aba: Funcionários aguardando decisão
         df_aguardando.to_excel(writer, index=False, sheet_name='Aguardando Decisão')
         worksheet = writer.sheets['Aguardando Decisão']
         format_blue = workbook.add_format({'bg_color': '#CCCCFF'})
@@ -418,7 +354,6 @@ def exportar_novo_excel(df):
             for j in range(len(colunas_exportar)):
                 worksheet.write(i+1, j, str(df_aguardando.iloc[i][colunas_exportar[j]]), format_blue)
         
-        # Aba adicional: Resumo
         resumo_data = [
             ['RESUMO DO PROCESSAMENTO'],
             [f'Data de Geração: {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")}'],
@@ -436,7 +371,6 @@ def exportar_novo_excel(df):
     output.seek(0)
     return output.getvalue()
 
-# Interface principal do Streamlit
 st.sidebar.header("Upload de Arquivos")
 
 arquivo_ausencias = st.sidebar.file_uploader("Arquivo de Ausências", type=["xlsx", "xls"])
@@ -469,12 +403,20 @@ with tab1:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
                     
                     # Imprime as primeiras linhas do DataFrame
-                    st.write("Primeiras linhas do DataFrame:")
-                    st.write(resultado.head())
+                    try:
+                        st.write("Primeiras linhas do DataFrame:")
+                        st.write(resultado.head())
+                    except Exception as e:
+                        st.write("Erro ao exibir DataFrame. Convertendo colunas para string para exibição.")
+                        st.write(resultado.astype(str).head())
                     
                     # Verifica os tipos de dados de cada coluna
-                    st.write("Tipos de dados das colunas:")
-                    st.write(resultado.dtypes)
+                    try:
+                        st.write("Tipos de dados das colunas:")
+                        st.write(resultado.dtypes)
+                    except Exception as e:
+                        st.write("Erro ao exibir tipos de dados. Convertendo para string.")
+                        st.write(resultado.dtypes.astype(str))
                     
                     # Exibe a distribuição dos status
                     st.write("Distribuição dos status:", resultado['Status'].value_counts())
