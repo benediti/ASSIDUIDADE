@@ -19,10 +19,8 @@ def converter_data_br_para_datetime(data_str):
     """
     if pd.isna(data_str) or data_str == '' or data_str is None:
         return None
-    
     if isinstance(data_str, datetime):
         return data_str
-        
     try:
         if isinstance(data_str, str):
             return datetime.strptime(data_str, '%d/%m/%Y')
@@ -129,6 +127,8 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
             right_on='Matricula',
             how='left'
         )
+        # Remover colunas duplicadas após o merge
+        df_combinado = df_combinado.loc[:, ~df_combinado.columns.duplicated()]
         if not df_afastamentos.empty:
             if 'Matricula' in df_afastamentos.columns:
                 df_afastamentos['Matricula'] = df_afastamentos['Matricula'].astype(str)
@@ -140,6 +140,8 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
                     how='left',
                     suffixes=('', '_afastamento')
                 )
+                # Remover novamente colunas duplicadas, se houver
+                df_combinado = df_combinado.loc[:, ~df_combinado.columns.duplicated()]
         df_consolidado = consolidar_dados_funcionario(df_combinado)
         df_final = aplicar_regras_pagamento(df_consolidado)
         return df_final
@@ -355,7 +357,7 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 if not resultado.empty:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    # Converte todas as colunas para string para exibição
+                    # Converter todas as colunas para string para exibição
                     df_display = resultado.copy()
                     for col in df_display.columns:
                         df_display[col] = df_display[col].astype(str)
