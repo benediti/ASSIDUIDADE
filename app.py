@@ -15,9 +15,9 @@ st.write("Este aplicativo processa dados de ausências de funcionários.")
 # Debugging function to display DataFrame info
 def debug_dataframe(df):
     st.write("DataFrame Head:")
-    st.write(df.head())
+    st.dataframe(df.head())
     st.write("DataFrame Info:")
-    st.write(df.info())
+    st.write(df.dtypes)
     st.write("DataFrame Describe:")
     st.write(df.describe(include='all'))
 
@@ -291,6 +291,7 @@ def aplicar_regras_pagamento(df):
         'Valor a Pagar': 'Valor_Premio'
     })
     return df
+
 def exportar_novo_excel(df):
     output = BytesIO()
     colunas_adicionais = []
@@ -299,9 +300,9 @@ def exportar_novo_excel(df):
             colunas_adicionais.append(coluna)
     colunas_principais = ['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']
     colunas_exportar = colunas_adicionais + colunas_principais
-    df_tem_direito = df[df['Status'] == 'Tem direito'][colunas_exportar]
-    df_nao_tem_direito = df[df['Status'] == 'Não tem direito'][colunas_exportar]
-    df_aguardando = df[df['Status'] == 'Aguardando decisão'][colunas_exportar]
+    df_tem_direito = df[df['Status'] == 'Tem direito'][colunas_exportar].copy()
+    df_nao_tem_direito = df[df['Status'] == 'Não tem direito'][colunas_exportar].copy()
+    df_aguardando = df[df['Status'] == 'Aguardando decisão'][colunas_exportar].copy()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_tem_direito.to_excel(writer, index=False, sheet_name='Com Direito')
         workbook = writer.book
@@ -363,35 +364,105 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 if not resultado.empty:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    # Converte todas as colunas para string para exibição
-                    df_display = resultado.copy()
-                    for col in df_display.columns:
-                        df_display[col] = df_display[col].astype(str)
-                    st.write("Primeiras linhas do DataFrame:")
-                    st.write(df_display.head())
-                    st.write("Tipos de dados das colunas:")
-                    st.write(df_display.dtypes)
-                    st.write("Distribuição dos status:", df_display['Status'].value_counts())
-                    st.subheader("Resultados Preliminares")
-                    st.dataframe(df_display)
-                    total_a_pagar = resultado['Valor_Premio'].sum()
-                    contagem_por_status = resultado['Status'].value_counts()
-                    st.subheader("Resumo")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
-                    with col2:
-                        st.write("Contagem por Status:")
-                        st.write(contagem_por_status)
-                    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+                    
+                    # Store the result in session state for access in the second tab
+                    st.session_state.resultado_processado = resultado
+                    
+                    # Fix: Handle DataFrame display to prevent PyArrow conversion errors
+                    try:
+                        # First convert problematic columns to string to avoid display issues
+                        df_display = resultado.copy()
+                        
+                        # Ensure all columns have proper types before display
+                        for col in df_display.columns:
+                            if df_display[col].dtype == 'object':
+                                df_display[col] = df_display[col].astype(str)
+                            
+                        # Safe display of DataFrame head
+                        st.write("Primeiras linhas do DataFrame:")
+                        st.dataframe(df_display.head())
+                        
+                        # Show column data types
+                        st.write("Tipos de dados das colunas:")
+                        st.write(pd.DataFrame(df_display.dtypes, columns=['Tipo de Dado']))
+                        
+                        # Show status distribution
+                        st.write("Distribuição dos status:")
+                        status_counts = df_display['Status'].value_counts().reset_index()
+                        status_counts.columns = ['Status', 'Quantidade']
+                        st.dataframe(status_counts)
+                        
+                        # Show complete dataframe with filtering capability
+                        st.subheader("Resultados Preliminares")
+                        st.dataframe(df_display)
+                        
+                        # Summary metrics
+                        total_a_pagar = resultado['Valor_Premio'].sum()
+                        contagem_por_status = resultado['Status'].value_counts()
+                        
+                        st.subheader("Resumo")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
+                        with col2:
+                            st.write("Contagem por Status:")
+                            st.write(contagem_por_status)
+                        
+                        # Provide export option
+                        excel_data = exportar_novo_excel(resultado)
+                        st.download_button(
+                            label="Baixar Resultados (Excel)",
+                            data=excel_data,
+                            file_name=f"resultado_ausencias_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
+                        st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+                    except Exception as e:
+                        st.error(f"Erro ao exibir dados: {str(e)}")
+                        st.write("Exibindo informações resumidas para evitar erros:")
+                        st.write(f"Total de registros: {len(resultado)}")
+                        st.write(f"Colunas: {', '.join(resultado.columns.tolist())}")
                 else:
                     st.warning("Nenhum resultado encontrado.")
         else:
             st.warning("Por favor, faça o upload dos arquivos necessários.")
 
 with tab2:
-    if 'resultado_processado' in st.session_state:
-        st.dataframe(st.session_state.resultado_processado)
+    st.subheader("Edição e Exportação de Resultados")
+    if 'resultado_processado' in st.session_state and not st.session_state.resultado_processado.empty:
+        # Display editable dataframe (in Streamlit this is just for view, not actual editing)
+        resultado_edicao = st.session_state.resultado_processado.copy()
+        
+        # Create a safe display version
+        safe_display = resultado_edicao.copy()
+        for col in safe_display.columns:
+            if safe_display[col].dtype == 'object':
+                safe_display[col] = safe_display[col].astype(str)
+        
+        # Filter options
+        st.write("Filtrar por Status:")
+        all_status = ['Todos'] + list(safe_display['Status'].unique())
+        selected_status = st.selectbox("Selecione um status", all_status)
+        
+        # Apply filter
+        if selected_status != 'Todos':
+            filtered_df = safe_display[safe_display['Status'] == selected_status]
+        else:
+            filtered_df = safe_display
+        
+        st.dataframe(filtered_df)
+        
+        # Export the filtered or full dataset
+        if st.button("Exportar Dados Filtrados"):
+            excel_filtered = exportar_novo_excel(resultado_edicao if selected_status == 'Todos' 
+                                               else resultado_edicao[resultado_edicao['Status'] == selected_status])
+            st.download_button(
+                label="Baixar Arquivo Excel",
+                data=excel_filtered,
+                file_name=f"resultado_filtrado_{selected_status}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     else:
         st.info("Por favor, primeiro processe os dados na aba 'Processamento Inicial'.")
 
