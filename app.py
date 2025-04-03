@@ -12,6 +12,15 @@ warnings.filterwarnings('ignore')
 st.title("Processador de Ausências")
 st.write("Este aplicativo processa dados de ausências de funcionários.")
 
+# Debugging function to display DataFrame info
+def debug_dataframe(df):
+    st.write("DataFrame Head:")
+    st.write(df.head())
+    st.write("DataFrame Info:")
+    st.write(df.info())
+    st.write("DataFrame Describe:")
+    st.write(df.describe(include='all'))
+
 def converter_data_br_para_datetime(data_str):
     """
     Converte uma string de data no formato brasileiro (DD/MM/YYYY) para um objeto datetime.
@@ -282,7 +291,6 @@ def aplicar_regras_pagamento(df):
         'Valor a Pagar': 'Valor_Premio'
     })
     return df
-
 def exportar_novo_excel(df):
     output = BytesIO()
     colunas_adicionais = []
