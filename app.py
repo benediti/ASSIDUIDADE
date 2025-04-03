@@ -12,9 +12,32 @@ warnings.filterwarnings('ignore')
 st.title("Processador de Ausências")
 st.write("Este aplicativo processa dados de ausências de funcionários.")
 
-# Debugging function to display DataFrame info
 def debug_dataframe(df):
     try:
+        # Check for duplicate columns first
+        duplicate_cols = df.columns[df.columns.duplicated()]
+        if not duplicate_cols.empty:
+            st.warning(f"Colunas duplicadas detectadas: {list(duplicate_cols)}")
+            
+            # Create a copy with renamed columns to avoid display issues
+            df_clean = df.copy()
+            new_cols = []
+            seen = set()
+            for col in df_clean.columns:
+                if col in seen:
+                    i = 1
+                    new_col = f"{col}_{i}"
+                    while new_col in seen:
+                        i += 1
+                        new_col = f"{col}_{i}"
+                    new_cols.append(new_col)
+                    seen.add(new_col)
+                else:
+                    new_cols.append(col)
+                    seen.add(col)
+            df_clean.columns = new_cols
+            df = df_clean
+            
         st.write("DataFrame Head:")
         # Convert to string to avoid PyArrow conversion issues
         df_head = df.head().copy()
@@ -147,26 +170,74 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
     if data_limite is not None:
         df_funcionarios = df_funcionarios[df_funcionarios['Data Admissão'] <= data_limite]
     if 'Matricula' in df_ausencias.columns and 'Matricula' in df_funcionarios.columns:
-        df_ausencias['Matricula'] = df_ausencias['Matricula'].astype(str)
-        df_funcionarios['Matricula'] = df_funcionarios['Matricula'].astype(str)
+        # Rename duplicate columns before merging
+        df_ausencias_renamed = df_ausencias.copy()
+        df_funcionarios_renamed = df_funcionarios.copy()
+        
+        # Add suffix to columns in df_ausencias to avoid duplicate names after merge
+        rename_map = {}
+        for col in df_ausencias_renamed.columns:
+            if col in df_funcionarios_renamed.columns and col != 'Matricula':
+                rename_map[col] = f"{col}_ausencia"
+        
+        if rename_map:
+            df_ausencias_renamed = df_ausencias_renamed.rename(columns=rename_map)
+        
+        # Convert Matricula columns to string for merging
+        df_ausencias_renamed['Matricula'] = df_ausencias_renamed['Matricula'].astype(str)
+        df_funcionarios_renamed['Matricula'] = df_funcionarios_renamed['Matricula'].astype(str)
+        
         df_combinado = pd.merge(
-            df_funcionarios,
-            df_ausencias,
+            df_funcionarios_renamed,
+            df_ausencias_renamed,
             left_on='Matricula',
             right_on='Matricula',
             how='left'
         )
+        
         if not df_afastamentos.empty:
             if 'Matricula' in df_afastamentos.columns:
-                df_afastamentos['Matricula'] = df_afastamentos['Matricula'].astype(str)
+                # Rename columns in df_afastamentos to avoid duplicates
+                df_afastamentos_renamed = df_afastamentos.copy()
+                rename_map = {}
+                for col in df_afastamentos_renamed.columns:
+                    if col in df_combinado.columns and col != 'Matricula':
+                        rename_map[col] = f"{col}_afastamento"
+                
+                if rename_map:
+                    df_afastamentos_renamed = df_afastamentos_renamed.rename(columns=rename_map)
+                
+                df_afastamentos_renamed['Matricula'] = df_afastamentos_renamed['Matricula'].astype(str)
+                
                 df_combinado = pd.merge(
                     df_combinado,
-                    df_afastamentos,
+                    df_afastamentos_renamed,
                     left_on='Matricula',
                     right_on='Matricula',
-                    how='left',
-                    suffixes=('', '_afastamento')
+                    how='left'
                 )
+        
+        # Check for duplicate columns after all merges
+        duplicate_cols = df_combinado.columns[df_combinado.columns.duplicated()]
+        if not duplicate_cols.empty:
+            st.warning(f"Colunas duplicadas encontradas: {list(duplicate_cols)}")
+            # Rename duplicates to make them unique
+            new_cols = []
+            seen = set()
+            for col in df_combinado.columns:
+                if col in seen:
+                    i = 1
+                    new_col = f"{col}_{i}"
+                    while new_col in seen:
+                        i += 1
+                        new_col = f"{col}_{i}"
+                    new_cols.append(new_col)
+                    seen.add(new_col)
+                else:
+                    new_cols.append(col)
+                    seen.add(col)
+            df_combinado.columns = new_cols
+        
         df_consolidado = consolidar_dados_funcionario(df_combinado)
         df_final = aplicar_regras_pagamento(df_consolidado)
         return df_final
@@ -388,6 +459,28 @@ with tab1:
                     
                     # Fix: Handle DataFrame display to prevent PyArrow conversion errors
                     try:
+                        # First check for duplicate columns and fix them
+                        duplicate_cols = resultado.columns[resultado.columns.duplicated()]
+                        if not duplicate_cols.empty:
+                            st.warning(f"Colunas duplicadas encontradas: {list(duplicate_cols)}")
+                            # Rename duplicates
+                            new_cols = []
+                            seen = set()
+                            for col in resultado.columns:
+                                if col in seen:
+                                    i = 1
+                                    new_col = f"{col}_{i}"
+                                    while new_col in seen:
+                                        i += 1
+                                        new_col = f"{col}_{i}"
+                                    new_cols.append(new_col)
+                                    seen.add(new_col)
+                                else:
+                                    new_cols.append(col)
+                                    seen.add(col)
+                            resultado.columns = new_cols
+                            st.success("Colunas duplicadas foram renomeadas.")
+                        
                         # First convert problematic columns to string to avoid display issues
                         df_display = resultado.copy()
                         
@@ -456,6 +549,28 @@ with tab2:
         # Display editable dataframe (in Streamlit this is just for view, not actual editing)
         resultado_edicao = st.session_state.resultado_processado.copy()
         
+        # Check for and handle duplicate columns
+        duplicate_cols = resultado_edicao.columns[resultado_edicao.columns.duplicated()]
+        if not duplicate_cols.empty:
+            st.warning(f"Colunas duplicadas encontradas na aba de edição: {list(duplicate_cols)}")
+            # Rename duplicates
+            new_cols = []
+            seen = set()
+            for col in resultado_edicao.columns:
+                if col in seen:
+                    i = 1
+                    new_col = f"{col}_{i}"
+                    while new_col in seen:
+                        i += 1
+                        new_col = f"{col}_{i}"
+                    new_cols.append(new_col)
+                    seen.add(new_col)
+                else:
+                    new_cols.append(col)
+                    seen.add(col)
+            resultado_edicao.columns = new_cols
+            st.success("Colunas duplicadas foram renomeadas.")
+            
         # Create a safe display version - convert everything to string
         safe_display = resultado_edicao.copy()
         for col in safe_display.columns:
