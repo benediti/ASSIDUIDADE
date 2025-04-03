@@ -14,12 +14,30 @@ st.write("Este aplicativo processa dados de ausências de funcionários.")
 
 # Debugging function to display DataFrame info
 def debug_dataframe(df):
-    st.write("DataFrame Head:")
-    st.dataframe(df.head())
-    st.write("DataFrame Info:")
-    st.write(df.dtypes)
-    st.write("DataFrame Describe:")
-    st.write(df.describe(include='all'))
+    try:
+        st.write("DataFrame Head:")
+        # Convert to string to avoid PyArrow conversion issues
+        df_head = df.head().copy()
+        for col in df_head.columns:
+            df_head[col] = df_head[col].astype(str)
+        st.dataframe(df_head)
+        
+        st.write("DataFrame Info:")
+        # Display column types safely
+        info_data = []
+        for col in df.columns:
+            info_data.append({"Column": col, "Type": str(df[col].dtype)})
+        st.dataframe(pd.DataFrame(info_data))
+        
+        st.write("DataFrame Describe:")
+        # Try to display statistics, but fallback to basic info if it fails
+        try:
+            st.write(df.describe(include='all'))
+        except Exception as e:
+            st.write(f"Unable to generate statistics: {str(e)}")
+            st.write(f"DataFrame shape: {df.shape}")
+    except Exception as e:
+        st.error(f"Error displaying DataFrame debug info: {str(e)}")
 
 def converter_data_br_para_datetime(data_str):
     """
@@ -375,8 +393,8 @@ with tab1:
                         
                         # Ensure all columns have proper types before display
                         for col in df_display.columns:
-                            if df_display[col].dtype == 'object':
-                                df_display[col] = df_display[col].astype(str)
+                            # Convert to string to avoid PyArrow conversion issues
+                            df_display[col] = df_display[col].astype(str)
                             
                         # Safe display of DataFrame head
                         st.write("Primeiras linhas do DataFrame:")
@@ -388,9 +406,13 @@ with tab1:
                         
                         # Show status distribution
                         st.write("Distribuição dos status:")
-                        status_counts = df_display['Status'].value_counts().reset_index()
-                        status_counts.columns = ['Status', 'Quantidade']
-                        st.dataframe(status_counts)
+                        try:
+                            status_counts = df_display['Status'].value_counts().reset_index()
+                            status_counts.columns = ['Status', 'Quantidade']
+                            st.dataframe(status_counts)
+                        except Exception as e:
+                            st.write(f"Erro ao mostrar distribuição de status: {str(e)}")
+                            st.write("Status únicos:", list(df_display['Status'].unique()))
                         
                         # Show complete dataframe with filtering capability
                         st.subheader("Resultados Preliminares")
@@ -434,22 +456,37 @@ with tab2:
         # Display editable dataframe (in Streamlit this is just for view, not actual editing)
         resultado_edicao = st.session_state.resultado_processado.copy()
         
-        # Create a safe display version
+        # Create a safe display version - convert everything to string
         safe_display = resultado_edicao.copy()
         for col in safe_display.columns:
-            if safe_display[col].dtype == 'object':
-                safe_display[col] = safe_display[col].astype(str)
+            # Convert all columns to string to avoid display issues
+            safe_display[col] = safe_display[col].astype(str)
         
         # Filter options
         st.write("Filtrar por Status:")
-        all_status = ['Todos'] + list(safe_display['Status'].unique())
-        selected_status = st.selectbox("Selecione um status", all_status)
+        try:
+            status_values = safe_display['Status'].unique()
+            # Check if we actually got values back
+            if len(status_values) > 0:
+                all_status = ['Todos'] + list(status_values)
+            else:
+                all_status = ['Todos']
+                st.warning("Não foi possível encontrar valores de status distintos.")
+            selected_status = st.selectbox("Selecione um status", all_status)
+        except Exception as e:
+            st.error(f"Erro ao obter valores de status: {str(e)}")
+            all_status = ['Todos']
+            selected_status = 'Todos'
         
         # Apply filter
-        if selected_status != 'Todos':
-            filtered_df = safe_display[safe_display['Status'] == selected_status]
-        else:
-            filtered_df = safe_display
+        try:
+            if selected_status != 'Todos':
+                filtered_df = safe_display[safe_display['Status'] == selected_status]
+            else:
+                filtered_df = safe_display
+        except Exception as e:
+            st.error(f"Erro ao filtrar dados: {str(e)}")
+            filtered_df = safe_display  # Use unfiltered data as fallback
         
         st.dataframe(filtered_df)
         
