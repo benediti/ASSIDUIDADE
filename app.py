@@ -47,7 +47,7 @@ def carregar_arquivo_ausencias(uploaded_file):
     """
     try:
         df = pd.read_excel(uploaded_file)
-        # Normaliza os nomes das colunas (remove espaços e converte para título padrão)
+        # Normaliza os nomes das colunas
         df.columns = [col.strip() for col in df.columns]
         
         if 'Dia' in df.columns:
@@ -466,37 +466,34 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 
                 if not resultado.empty:
-    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-    
-    # Imprime as primeiras linhas do DataFrame
-    st.write("Primeiras linhas do DataFrame:")
-    st.write(resultado.head())
-    
-    # Verifica os tipos de dados de cada coluna
-    st.write("Tipos de dados das colunas:")
-    st.write(resultado.dtypes)
-    
-    # Exibe a distribuição dos status
-    st.write("Distribuição dos status:", resultado['Status'].value_counts())
-    
-    st.subheader("Resultados Preliminares")
-    st.dataframe(resultado)
-    
-    total_a_pagar = resultado['Valor_Premio'].sum()
-    contagem_por_status = resultado['Status'].value_counts()
-    
-    st.subheader("Resumo")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
-    with col2:
-        st.write("Contagem por Status:")
-        st.write(contagem_por_status)
-    
-    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
-else:
-    st.warning("Nenhum resultado encontrado.")
-
+                    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+                    
+                    # Imprime as primeiras linhas do DataFrame
+                    st.write("Primeiras linhas do DataFrame:")
+                    st.write(resultado.head())
+                    
+                    # Verifica os tipos de dados de cada coluna
+                    st.write("Tipos de dados das colunas:")
+                    st.write(resultado.dtypes)
+                    
+                    # Exibe a distribuição dos status
+                    st.write("Distribuição dos status:", resultado['Status'].value_counts())
+                    
+                    st.subheader("Resultados Preliminares")
+                    st.dataframe(resultado)
+                    
+                    total_a_pagar = resultado['Valor_Premio'].sum()
+                    contagem_por_status = resultado['Status'].value_counts()
+                    
+                    st.subheader("Resumo")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
+                    with col2:
+                        st.write("Contagem por Status:")
+                        st.write(contagem_por_status)
+                    
+                    st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
                 else:
                     st.warning("Nenhum resultado encontrado.")
         else:
@@ -504,7 +501,6 @@ else:
 
 with tab2:
     if 'resultado_processado' in st.session_state:
-        # Se houver um mecanismo de edição, ele pode ser implementado aqui.
         st.dataframe(st.session_state.resultado_processado)
     else:
         st.info("Por favor, primeiro processe os dados na aba 'Processamento Inicial'.")
