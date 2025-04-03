@@ -489,20 +489,65 @@ with tab1:
                             # Convert to string to avoid PyArrow conversion issues
                             df_display[col] = df_display[col].astype(str)
                             
-                        # Safe display of DataFrame head
-                        st.write("Primeiras linhas do DataFrame:")
-                        st.dataframe(df_display.head())
+                        # Handle duplicate columns before display
+                        if any(df_display.columns.duplicated()):
+                            # Rename duplicate columns
+                            new_cols = []
+                            seen = set()
+                            for col in df_display.columns:
+                                if col in seen:
+                                    i = 1
+                                    new_col = f"{col}_{i}"
+                                    while new_col in seen:
+                                        i += 1
+                                        new_col = f"{col}_{i}"
+                                    new_cols.append(new_col)
+                                    seen.add(new_col)
+                                else:
+                                    new_cols.append(col)
+                                    seen.add(col)
+                            df_display.columns = new_cols
+                        
+                        # Safe display of DataFrame head - use HTML instead of st.dataframe
+                        st.write("#### Primeiras linhas do DataFrame:")
+                        html_table = "<div style='max-height: 300px; overflow-y: auto;'><table style='width:100%; border-collapse: collapse;'>"
+                        
+                        # Add table header
+                        html_table += "<tr>"
+                        for col in df_display.columns:
+                            html_table += f"<th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>{col}</th>"
+                        html_table += "</tr>"
+                        
+                        # Add first 5 rows
+                        for i in range(min(5, len(df_display))):
+                            html_table += "<tr>"
+                            for col in df_display.columns:
+                                html_table += f"<td style='border: 1px solid #ddd; padding: 8px;'>{df_display.iloc[i][col]}</td>"
+                            html_table += "</tr>"
+                        
+                        html_table += "</table></div>"
+                        st.markdown(html_table, unsafe_allow_html=True)
                         
                         # Show column data types
                         st.write("Tipos de dados das colunas:")
                         st.write(pd.DataFrame(df_display.dtypes, columns=['Tipo de Dado']))
                         
                         # Show status distribution
-                        st.write("Distribuição dos status:")
+                        st.write("#### Distribuição dos status:")
                         try:
-                            status_counts = df_display['Status'].value_counts().reset_index()
-                            status_counts.columns = ['Status', 'Quantidade']
-                            st.dataframe(status_counts)
+                            status_counts = df_display['Status'].value_counts()
+                            
+                            # Create HTML table for status counts
+                            html_table = "<table style='width:50%; border-collapse: collapse;'>"
+                            html_table += "<tr><th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>Status</th>"
+                            html_table += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>Quantidade</th></tr>"
+                            
+                            for status, count in status_counts.items():
+                                html_table += f"<tr><td style='border: 1px solid #ddd; padding: 8px;'>{status}</td>"
+                                html_table += f"<td style='border: 1px solid #ddd; padding: 8px;'>{count}</td></tr>"
+                            
+                            html_table += "</table>"
+                            st.markdown(html_table, unsafe_allow_html=True)
                         except Exception as e:
                             st.write(f"Erro ao mostrar distribuição de status: {str(e)}")
                             st.write("Status únicos:", list(df_display['Status'].unique()))
