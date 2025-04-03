@@ -12,48 +12,53 @@ warnings.filterwarnings('ignore')
 st.title("Processador de Ausências")
 st.write("Este aplicativo processa dados de ausências de funcionários.")
 
+def renomear_colunas_duplicadas(df):
+    """
+    Garante que os nomes das colunas sejam únicos ao adicionar sufixos aos duplicados.
+    """
+    # Verificar se há colunas duplicadas
+    if not df.columns.duplicated().any():
+        return df
+    
+    # Cria um novo DataFrame com colunas renomeadas
+    df_renamed = df.copy()
+    new_cols = []
+    seen = {}
+    
+    for col in df_renamed.columns:
+        if col not in seen:
+            seen[col] = 0
+            new_cols.append(col)
+        else:
+            seen[col] += 1
+            new_cols.append(f"{col}_{seen[col]}")
+    
+    df_renamed.columns = new_cols
+    return df_renamed
+
 def debug_dataframe(df):
+    """
+    Exibe informações de depuração sobre o DataFrame de forma segura.
+    """
     try:
-        # Check for duplicate columns first
-        duplicate_cols = df.columns[df.columns.duplicated()]
-        if not duplicate_cols.empty:
-            st.warning(f"Colunas duplicadas detectadas: {list(duplicate_cols)}")
-            
-            # Create a copy with renamed columns to avoid display issues
-            df_clean = df.copy()
-            new_cols = []
-            seen = set()
-            for col in df_clean.columns:
-                if col in seen:
-                    i = 1
-                    new_col = f"{col}_{i}"
-                    while new_col in seen:
-                        i += 1
-                        new_col = f"{col}_{i}"
-                    new_cols.append(new_col)
-                    seen.add(new_col)
-                else:
-                    new_cols.append(col)
-                    seen.add(col)
-            df_clean.columns = new_cols
-            df = df_clean
+        # Verifica e renomeia colunas duplicadas
+        if df.columns.duplicated().any():
+            st.warning("Colunas duplicadas detectadas e renomeadas automaticamente.")
+            df = renomear_colunas_duplicadas(df)
             
         st.write("DataFrame Head:")
-        # Convert to string to avoid PyArrow conversion issues
         df_head = df.head().copy()
         for col in df_head.columns:
             df_head[col] = df_head[col].astype(str)
         st.dataframe(df_head)
         
         st.write("DataFrame Info:")
-        # Display column types safely
         info_data = []
         for col in df.columns:
             info_data.append({"Column": col, "Type": str(df[col].dtype)})
         st.dataframe(pd.DataFrame(info_data))
         
         st.write("DataFrame Describe:")
-        # Try to display statistics, but fallback to basic info if it fails
         try:
             st.write(df.describe(include='all'))
         except Exception as e:
@@ -90,24 +95,39 @@ def converter_data_br_para_datetime(data_str):
             return None
 
 def carregar_arquivo_ausencias(uploaded_file):
+    """
+    Carrega e processa o arquivo de ausências, tratando colunas duplicadas.
+    """
     try:
         df = pd.read_excel(uploaded_file)
+        # Verificar e corrigir colunas duplicadas
+        df = renomear_colunas_duplicadas(df)
+        # Limpa espaços em branco nos nomes das colunas
         df.columns = [col.strip() for col in df.columns]
+        
         if 'Dia' in df.columns:
             df['Dia'] = df['Dia'].astype(str)
             df['Dia'] = df['Dia'].apply(converter_data_br_para_datetime)
         if 'Data de Demissão' in df.columns:
             df['Data de Demissão'] = df['Data de Demissão'].astype(str)
             df['Data de Demissão'] = df['Data de Demissão'].apply(converter_data_br_para_datetime)
+        
         return df
     except Exception as e:
         st.error(f"Erro ao carregar arquivo de ausências: {e}")
         return pd.DataFrame()
 
 def carregar_arquivo_funcionarios(uploaded_file):
+    """
+    Carrega e processa o arquivo de funcionários, tratando colunas duplicadas.
+    """
     try:
         df = pd.read_excel(uploaded_file)
+        # Verificar e corrigir colunas duplicadas
+        df = renomear_colunas_duplicadas(df)
+        # Limpa espaços em branco nos nomes das colunas
         df.columns = [col.strip() for col in df.columns]
+        
         if 'Salário Mês Atual' in df.columns:
             st.write("### Informações sobre a coluna de salário")
             st.write(f"Tipo da coluna: {df['Salário Mês Atual'].dtype}")
@@ -115,22 +135,30 @@ def carregar_arquivo_funcionarios(uploaded_file):
             amostra = df['Salário Mês Atual'].head(5).tolist()
             for i, valor in enumerate(amostra):
                 st.write(f"Valor {i+1}: {valor} (tipo: {type(valor)})")
+                
         if 'Data Término Contrato' in df.columns:
             df['Data Término Contrato'] = df['Data Término Contrato'].astype(str)
             df['Data Término Contrato'] = df['Data Término Contrato'].apply(converter_data_br_para_datetime)
         if 'Data Admissão' in df.columns:
             df['Data Admissão'] = df['Data Admissão'].astype(str)
             df['Data Admissão'] = df['Data Admissão'].apply(converter_data_br_para_datetime)
+            
         return df
     except Exception as e:
         st.error(f"Erro ao carregar arquivo de funcionários: {e}")
         return pd.DataFrame()
 
 def carregar_arquivo_afastamentos(uploaded_file):
+    """
+    Carrega e processa o arquivo de afastamentos, tratando colunas duplicadas.
+    """
     if uploaded_file is None:
         return pd.DataFrame()
     try:
         df = pd.read_excel(uploaded_file)
+        # Verificar e corrigir colunas duplicadas
+        df = renomear_colunas_duplicadas(df)
+        # Limpa espaços em branco nos nomes das colunas
         df.columns = [col.strip() for col in df.columns]
         return df
     except Exception as e:
@@ -138,8 +166,15 @@ def carregar_arquivo_afastamentos(uploaded_file):
         return pd.DataFrame()
 
 def consolidar_dados_funcionario(df_combinado):
+    """
+    Consolida dados por funcionário, tratando possíveis colunas duplicadas.
+    """
     if df_combinado.empty:
         return df_combinado
+    
+    # Verificar e corrigir colunas duplicadas primeiro
+    df_combinado = renomear_colunas_duplicadas(df_combinado)
+    
     dados_consolidados = []
     for matricula, grupo in df_combinado.groupby('Matricula'):
         funcionario = grupo.iloc[0].copy()
@@ -156,25 +191,38 @@ def consolidar_dados_funcionario(df_combinado):
         funcionario['Tem Afastamento'] = tem_afastamento
         funcionario['Tem Ausência'] = tem_ausencia
         dados_consolidados.append(funcionario)
+    
     df_consolidado = pd.DataFrame(dados_consolidados)
     return df_consolidado
 
 def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=None):
+    """
+    Processa os dados de ausências, funcionários e afastamentos, tratando colunas duplicadas em todas as etapas.
+    """
     if df_ausencias.empty or df_funcionarios.empty:
         st.warning("Um ou mais arquivos não puderam ser carregados corretamente.")
         return pd.DataFrame()
+    
+    # Converter data limite
     if data_limite_admissao:
         data_limite = converter_data_br_para_datetime(data_limite_admissao)
     else:
         data_limite = None
+        
+    # Filtrar funcionários pela data de admissão
     if data_limite is not None:
         df_funcionarios = df_funcionarios[df_funcionarios['Data Admissão'] <= data_limite]
+    
     if 'Matricula' in df_ausencias.columns and 'Matricula' in df_funcionarios.columns:
-        # Rename duplicate columns before merging
+        # Garantir que não há colunas duplicadas em cada DataFrame antes de mesclar
+        df_ausencias = renomear_colunas_duplicadas(df_ausencias)
+        df_funcionarios = renomear_colunas_duplicadas(df_funcionarios)
+        
+        # Criar cópias para manter os originais intactos
         df_ausencias_renamed = df_ausencias.copy()
         df_funcionarios_renamed = df_funcionarios.copy()
         
-        # Add suffix to columns in df_ausencias to avoid duplicate names after merge
+        # Adicionar sufixo às colunas em df_ausencias para evitar nomes duplicados após mesclagem
         rename_map = {}
         for col in df_ausencias_renamed.columns:
             if col in df_funcionarios_renamed.columns and col != 'Matricula':
@@ -183,10 +231,11 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
         if rename_map:
             df_ausencias_renamed = df_ausencias_renamed.rename(columns=rename_map)
         
-        # Convert Matricula columns to string for merging
+        # Converter colunas Matricula para string para mesclagem
         df_ausencias_renamed['Matricula'] = df_ausencias_renamed['Matricula'].astype(str)
         df_funcionarios_renamed['Matricula'] = df_funcionarios_renamed['Matricula'].astype(str)
         
+        # Mesclar DataFrames
         df_combinado = pd.merge(
             df_funcionarios_renamed,
             df_ausencias_renamed,
@@ -195,9 +244,16 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
             how='left'
         )
         
+        # Verificar e renomear colunas duplicadas após a primeira mesclagem
+        df_combinado = renomear_colunas_duplicadas(df_combinado)
+        
+        # Processar afastamentos se existirem
         if not df_afastamentos.empty:
             if 'Matricula' in df_afastamentos.columns:
-                # Rename columns in df_afastamentos to avoid duplicates
+                # Garantir que não há colunas duplicadas no DataFrame de afastamentos
+                df_afastamentos = renomear_colunas_duplicadas(df_afastamentos)
+                
+                # Renomear colunas para evitar duplicação
                 df_afastamentos_renamed = df_afastamentos.copy()
                 rename_map = {}
                 for col in df_afastamentos_renamed.columns:
@@ -209,6 +265,7 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
                 
                 df_afastamentos_renamed['Matricula'] = df_afastamentos_renamed['Matricula'].astype(str)
                 
+                # Mesclar com DataFrame combinado
                 df_combinado = pd.merge(
                     df_combinado,
                     df_afastamentos_renamed,
@@ -216,40 +273,34 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
                     right_on='Matricula',
                     how='left'
                 )
+                
+                # Verificar e renomear colunas duplicadas após a segunda mesclagem
+                df_combinado = renomear_colunas_duplicadas(df_combinado)
         
-        # Check for duplicate columns after all merges
-        duplicate_cols = df_combinado.columns[df_combinado.columns.duplicated()]
-        if not duplicate_cols.empty:
-            st.warning(f"Colunas duplicadas encontradas: {list(duplicate_cols)}")
-            # Rename duplicates to make them unique
-            new_cols = []
-            seen = set()
-            for col in df_combinado.columns:
-                if col in seen:
-                    i = 1
-                    new_col = f"{col}_{i}"
-                    while new_col in seen:
-                        i += 1
-                        new_col = f"{col}_{i}"
-                    new_cols.append(new_col)
-                    seen.add(new_col)
-                else:
-                    new_cols.append(col)
-                    seen.add(col)
-            df_combinado.columns = new_cols
-        
+        # Consolidar dados e aplicar regras
         df_consolidado = consolidar_dados_funcionario(df_combinado)
         df_final = aplicar_regras_pagamento(df_consolidado)
+        
+        # Verificação final para garantir que não há colunas duplicadas
+        df_final = renomear_colunas_duplicadas(df_final)
+        
         return df_final
     else:
         st.warning("Aviso: Colunas de Matricula não encontradas em um ou ambos os arquivos.")
         return pd.DataFrame()
 
 def aplicar_regras_pagamento(df):
+    """
+    Aplica regras de pagamento ao DataFrame consolidado.
+    """
+    # Verificar e renomear colunas duplicadas primeiro
+    df = renomear_colunas_duplicadas(df)
+    
     df['Valor a Pagar'] = 0.0
     df['Status'] = ''
     df['Cor'] = ''
     df['Observacoes'] = ''
+    
     funcoes_sem_direito = [
         'AUX DE SERV GERAIS (INT)', 
         'AUX DE LIMPEZA (INT)',
@@ -257,13 +308,16 @@ def aplicar_regras_pagamento(df):
         'RECEPCIONISTA INTERMITENTE', 
         'PORTEIRO INTERMITENTE'
     ]
+    
     afastamentos_com_direito = [
         'Abonado Gerencia Loja', 
         'Abono Administrativo'
     ]
+    
     afastamentos_aguardar_decisao = [
         'Atraso'
     ]
+    
     afastamentos_sem_direito = [
         'Atestado Médico', 
         'Atestado de Óbito', 
@@ -284,6 +338,7 @@ def aplicar_regras_pagamento(df):
         'Processo Trabalhista', 
         'Licença Maternidade'
     ]
+    
     for idx, row in df.iterrows():
         cargo = str(row.get('Cargo', '')).strip()
         if cargo in funcoes_sem_direito:
@@ -292,6 +347,7 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Cor'] = 'vermelho'
             df.at[idx, 'Observacoes'] = f'Cargo sem direito: {cargo}'
             continue
+            
         salario = 0
         salario_original = row.get('Salário Mês Atual', 0)
         try:
@@ -306,18 +362,21 @@ def aplicar_regras_pagamento(df):
                     salario = float(salario_limpo)
         except Exception:
             salario = 0
+            
         if salario >= 2542.86:
             df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
             df.at[idx, 'Observacoes'] = f'Salário acima do limite: R$ {salario:.2f}'
             continue
+            
         if 'Falta' in df.columns and not pd.isna(row.get('Falta')):
             df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Não tem direito'
             df.at[idx, 'Cor'] = 'vermelho'
             df.at[idx, 'Observacoes'] = 'Tem falta'
             continue
+            
         if 'Afastamentos' in df.columns and not pd.isna(row.get('Afastamentos')):
             tipo_afastamento = str(row.get('Afastamentos')).strip()
             if tipo_afastamento in afastamentos_sem_direito:
@@ -333,13 +392,14 @@ def aplicar_regras_pagamento(df):
                 df.at[idx, 'Observacoes'] = f'Afastamento para avaliar: {tipo_afastamento}'
                 continue
             elif tipo_afastamento in afastamentos_com_direito:
-                pass
+                pass  # Continua o processamento para determinar o valor
             else:
                 df.at[idx, 'Valor a Pagar'] = 0.0
                 df.at[idx, 'Status'] = 'Aguardando decisão'
                 df.at[idx, 'Cor'] = 'azul'
                 df.at[idx, 'Observacoes'] = f'Afastamento não classificado: {tipo_afastamento}'
                 continue
+                
         if (('Ausência Integral' in df.columns and not pd.isna(row.get('Ausência Integral'))) or 
             ('Ausência Parcial' in df.columns and not pd.isna(row.get('Ausência Parcial')))):
             df.at[idx, 'Valor a Pagar'] = 0.0
@@ -347,6 +407,7 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Cor'] = 'azul'
             df.at[idx, 'Observacoes'] = 'Tem ausência - Necessita avaliação'
             continue
+            
         horas = 0
         if 'Qtd Horas Mensais' in df.columns:
             try:
@@ -358,6 +419,7 @@ def aplicar_regras_pagamento(df):
                         horas = float(qtd_horas)
             except Exception:
                 horas = 0
+                
         if horas == 220:
             df.at[idx, 'Valor a Pagar'] = 300.00
             df.at[idx, 'Status'] = 'Tem direito'
@@ -373,26 +435,42 @@ def aplicar_regras_pagamento(df):
             df.at[idx, 'Status'] = 'Aguardando decisão'
             df.at[idx, 'Cor'] = 'azul'
             df.at[idx, 'Observacoes'] = f'Sem ausências - verificar horas: {horas}'
+            
+    # Renomear colunas para o formato final
     df = df.rename(columns={
         'Matricula': 'Matricula',
         'Nome Funcionário': 'Nome',
         'Nome Local': 'Local',
         'Valor a Pagar': 'Valor_Premio'
     })
+    
     return df
 
 def exportar_novo_excel(df):
+    """
+    Exporta dados processados para um arquivo Excel com formatação.
+    """
+    # Verificar e renomear colunas duplicadas antes da exportação
+    df = renomear_colunas_duplicadas(df)
+    
     output = BytesIO()
+    
+    # Determinar quais colunas incluir no arquivo exportado
     colunas_adicionais = []
     for coluna in ['Cargo', 'Salário Mês Atual', 'Qtd Horas Mensais', 'Falta', 'Afastamentos', 'Ausência Integral', 'Ausência Parcial']:
         if coluna in df.columns:
             colunas_adicionais.append(coluna)
+            
     colunas_principais = ['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']
     colunas_exportar = colunas_adicionais + colunas_principais
+    
+    # Filtrar DataFrame por status
     df_tem_direito = df[df['Status'] == 'Tem direito'][colunas_exportar].copy()
     df_nao_tem_direito = df[df['Status'] == 'Não tem direito'][colunas_exportar].copy()
     df_aguardando = df[df['Status'] == 'Aguardando decisão'][colunas_exportar].copy()
+    
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Aba "Com Direito" (verde)
         df_tem_direito.to_excel(writer, index=False, sheet_name='Com Direito')
         workbook = writer.book
         worksheet = writer.sheets['Com Direito']
@@ -400,18 +478,24 @@ def exportar_novo_excel(df):
         for i in range(len(df_tem_direito)):
             for j in range(len(colunas_exportar)):
                 worksheet.write(i+1, j, str(df_tem_direito.iloc[i][colunas_exportar[j]]), format_green)
+        
+        # Aba "Sem Direito" (vermelho)
         df_nao_tem_direito.to_excel(writer, index=False, sheet_name='Sem Direito')
         worksheet = writer.sheets['Sem Direito']
         format_red = workbook.add_format({'bg_color': '#FFCCCC'})
         for i in range(len(df_nao_tem_direito)):
             for j in range(len(colunas_exportar)):
                 worksheet.write(i+1, j, str(df_nao_tem_direito.iloc[i][colunas_exportar[j]]), format_red)
+        
+        # Aba "Aguardando Decisão" (azul)
         df_aguardando.to_excel(writer, index=False, sheet_name='Aguardando Decisão')
         worksheet = writer.sheets['Aguardando Decisão']
         format_blue = workbook.add_format({'bg_color': '#CCCCFF'})
         for i in range(len(df_aguardando)):
             for j in range(len(colunas_exportar)):
                 worksheet.write(i+1, j, str(df_aguardando.iloc[i][colunas_exportar[j]]), format_blue)
+        
+        # Aba "Resumo"
         resumo_data = [
             ['RESUMO DO PROCESSAMENTO'],
             [f'Data de Geração: {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")}'],
@@ -424,9 +508,11 @@ def exportar_novo_excel(df):
             [f'Valor Total dos Prêmios: R$ {df_tem_direito["Valor_Premio"].sum():,.2f}'],
         ]
         pd.DataFrame(resumo_data).to_excel(writer, index=False, header=False, sheet_name='Resumo')
+        
     output.seek(0)
     return output.getvalue()
 
+# Configuração da interface do Streamlit
 st.sidebar.header("Upload de Arquivos")
 arquivo_ausencias = st.sidebar.file_uploader("Arquivo de Ausências", type=["xlsx", "xls"])
 arquivo_funcionarios = st.sidebar.file_uploader("Arquivo de Funcionários", type=["xlsx", "xls"])
@@ -439,6 +525,7 @@ data_limite = st.sidebar.date_input(
     format="DD/MM/YYYY"
 )
 
+# Criar abas para separar processamento e edição
 tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
 
 with tab1:
@@ -446,233 +533,64 @@ with tab1:
     if processar:
         if arquivo_ausencias is not None and arquivo_funcionarios is not None:
             with st.spinner("Processando arquivos..."):
-                df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
-                df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
-                df_afastamentos = carregar_arquivo_afastamentos(arquivo_afastamentos)
-                data_limite_str = data_limite.strftime("%d/%m/%Y")
-                resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
-                if not resultado.empty:
-                    st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+                try:
+                    # Carregar arquivos
+                    df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
+                    df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
+                    df_afastamentos = carregar_arquivo_afastamentos(arquivo_afastamentos)
                     
-                    # Store the result in session state for access in the second tab
-                    st.session_state.resultado_processado = resultado
-                    
-                    # Fix: Handle DataFrame display to prevent PyArrow conversion errors
-                    try:
-                        # First check for duplicate columns and fix them
-                        duplicate_cols = resultado.columns[resultado.columns.duplicated()]
-                        if not duplicate_cols.empty:
-                            st.warning(f"Colunas duplicadas encontradas: {list(duplicate_cols)}")
-                            # Rename duplicates
-                            new_cols = []
-                            seen = set()
+                    # Verificar se os DataFrames estão vazios
+                    if df_ausencias.empty or df_funcionarios.empty:
+                        st.error("Um ou mais arquivos não puderam ser carregados corretamente.")
+                    else:
+                        # Processar dados
+                        data_limite_str = data_limite.strftime("%d/%m/%Y")
+                        resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
+                        
+                        if not resultado.empty:
+                            # Verificar colunas duplicadas antes de armazenar o resultado
+                            resultado = renomear_colunas_duplicadas(resultado)
+                            
+                            # Armazenar resultado na session_state
+                            st.session_state.resultado_processado = resultado
+                            
+                            st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
+                            
+                            # Exibir informações resumidas sobre o resultado
+                            st.write("#### Primeiras linhas do DataFrame:")
+                            
+                            # Criar versão segura para exibição
+                            df_display = resultado.copy()
+                            for col in df_display.columns:
+                                df_display[col] = df_display[col].astype(str)
+                            
+                            # Exibir tabela de forma segura usando st.dataframe
+                            st.dataframe(df_display.head())
+                            
+                            # Exibir tipos de dados
+                            st.write("#### Tipos de Dados das Colunas:")
+                            info_data = []
                             for col in resultado.columns:
-                                if col in seen:
-                                    i = 1
-                                    new_col = f"{col}_{i}"
-                                    while new_col in seen:
-                                        i += 1
-                                        new_col = f"{col}_{i}"
-                                    new_cols.append(new_col)
-                                    seen.add(new_col)
-                                else:
-                                    new_cols.append(col)
-                                    seen.add(col)
-                            resultado.columns = new_cols
-                            st.success("Colunas duplicadas foram renomeadas.")
-                        
-                        # First convert problematic columns to string to avoid display issues
-                        df_display = resultado.copy()
-                        
-                        # Ensure all columns have proper types before display
-                        for col in df_display.columns:
-                            # Convert to string to avoid PyArrow conversion issues
-                            df_display[col] = df_display[col].astype(str)
+                                info_data.append({"Coluna": col, "Tipo": str(resultado[col].dtype)})
+                            st.dataframe(pd.DataFrame(info_data))
                             
-                        # Handle duplicate columns before display
-                        if any(df_display.columns.duplicated()):
-                            # Rename duplicate columns
-                            new_cols = []
-                            seen = set()
-                            for col in df_display.columns:
-                                if col in seen:
-                                    i = 1
-                                    new_col = f"{col}_{i}"
-                                    while new_col in seen:
-                                        i += 1
-                                        new_col = f"{col}_{i}"
-                                    new_cols.append(new_col)
-                                    seen.add(new_col)
-                                else:
-                                    new_cols.append(col)
-                                    seen.add(col)
-                            df_display.columns = new_cols
-                        
-                        # Safe display of DataFrame head - use HTML instead of st.dataframe
-                        st.write("#### Primeiras linhas do DataFrame:")
-                        html_table = "<div style='max-height: 300px; overflow-y: auto;'><table style='width:100%; border-collapse: collapse;'>"
-                        
-                        # Add table header
-                        html_table += "<tr>"
-                        for col in df_display.columns:
-                            html_table += f"<th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>{col}</th>"
-                        html_table += "</tr>"
-                        
-                        # Add first 5 rows
-                        for i in range(min(5, len(df_display))):
-                            html_table += "<tr>"
-                            for col in df_display.columns:
-                                html_table += f"<td style='border: 1px solid #ddd; padding: 8px;'>{df_display.iloc[i][col]}</td>"
-                            html_table += "</tr>"
-                        
-                        html_table += "</table></div>"
-                        st.markdown(html_table, unsafe_allow_html=True)
-                        
-                        # Show column data types
-                        st.write("Tipos de dados das colunas:")
-                        st.write(pd.DataFrame(df_display.dtypes, columns=['Tipo de Dado']))
-                        
-                        # Show status distribution
-                        st.write("#### Distribuição dos status:")
-                        try:
-                            status_counts = df_display['Status'].value_counts()
+                            # Exibir distribuição de status
+                            st.write("#### Distribuição dos Status:")
+                            status_counts = resultado['Status'].value_counts().reset_index()
+                            status_counts.columns = ['Status', 'Contagem']
+                            st.dataframe(status_counts)
                             
-                            # Create HTML table for status counts
-                            html_table = "<table style='width:50%; border-collapse: collapse;'>"
-                            html_table += "<tr><th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>Status</th>"
-                            html_table += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;'>Quantidade</th></tr>"
+                            # Exibir métricas resumidas
+                            st.write("#### Resumo:")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Total a Pagar", f"R$ {resultado['Valor_Premio'].sum():.2f}")
+                            with col2:
+                                st.metric("Total de Funcionários", str(len(resultado)))
                             
-                            for status, count in status_counts.items():
-                                html_table += f"<tr><td style='border: 1px solid #ddd; padding: 8px;'>{status}</td>"
-                                html_table += f"<td style='border: 1px solid #ddd; padding: 8px;'>{count}</td></tr>"
-                            
-                            html_table += "</table>"
-                            st.markdown(html_table, unsafe_allow_html=True)
-                        except Exception as e:
-                            st.write(f"Erro ao mostrar distribuição de status: {str(e)}")
-                            st.write("Status únicos:", list(df_display['Status'].unique()))
-                        
-                        # Show complete dataframe with filtering capability
-                        st.subheader("Resultados Preliminares")
-                        st.dataframe(df_display)
-                        
-                        # Summary metrics
-                        total_a_pagar = resultado['Valor_Premio'].sum()
-                        contagem_por_status = resultado['Status'].value_counts()
-                        
-                        st.subheader("Resumo")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Total a Pagar", f"R$ {total_a_pagar:.2f}")
-                        with col2:
-                            st.write("Contagem por Status:")
-                            st.write(contagem_por_status)
-                        
-                        # Provide export option
-                        excel_data = exportar_novo_excel(resultado)
-                        st.download_button(
-                            label="Baixar Resultados (Excel)",
-                            data=excel_data,
-                            file_name=f"resultado_ausencias_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                        
-                        st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
-                    except Exception as e:
-                        st.error(f"Erro ao exibir dados: {str(e)}")
-                        st.write("Exibindo informações resumidas para evitar erros:")
-                        st.write(f"Total de registros: {len(resultado)}")
-                        st.write(f"Colunas: {', '.join(resultado.columns.tolist())}")
-                else:
-                    st.warning("Nenhum resultado encontrado.")
-        else:
-            st.warning("Por favor, faça o upload dos arquivos necessários.")
-
-with tab2:
-    st.subheader("Edição e Exportação de Resultados")
-    if 'resultado_processado' in st.session_state and not st.session_state.resultado_processado.empty:
-        # Display editable dataframe (in Streamlit this is just for view, not actual editing)
-        resultado_edicao = st.session_state.resultado_processado.copy()
-        
-        # Check for and handle duplicate columns
-        duplicate_cols = resultado_edicao.columns[resultado_edicao.columns.duplicated()]
-        if not duplicate_cols.empty:
-            st.warning(f"Colunas duplicadas encontradas na aba de edição: {list(duplicate_cols)}")
-            # Rename duplicates
-            new_cols = []
-            seen = set()
-            for col in resultado_edicao.columns:
-                if col in seen:
-                    i = 1
-                    new_col = f"{col}_{i}"
-                    while new_col in seen:
-                        i += 1
-                        new_col = f"{col}_{i}"
-                    new_cols.append(new_col)
-                    seen.add(new_col)
-                else:
-                    new_cols.append(col)
-                    seen.add(col)
-            resultado_edicao.columns = new_cols
-            st.success("Colunas duplicadas foram renomeadas.")
-            
-        # Create a safe display version - convert everything to string
-        safe_display = resultado_edicao.copy()
-        for col in safe_display.columns:
-            # Convert all columns to string to avoid display issues
-            safe_display[col] = safe_display[col].astype(str)
-        
-        # Filter options
-        st.write("Filtrar por Status:")
-        try:
-            status_values = safe_display['Status'].unique()
-            # Check if we actually got values back
-            if len(status_values) > 0:
-                all_status = ['Todos'] + list(status_values)
-            else:
-                all_status = ['Todos']
-                st.warning("Não foi possível encontrar valores de status distintos.")
-            selected_status = st.selectbox("Selecione um status", all_status)
-        except Exception as e:
-            st.error(f"Erro ao obter valores de status: {str(e)}")
-            all_status = ['Todos']
-            selected_status = 'Todos'
-        
-        # Apply filter
-        try:
-            if selected_status != 'Todos':
-                filtered_df = safe_display[safe_display['Status'] == selected_status]
-            else:
-                filtered_df = safe_display
-        except Exception as e:
-            st.error(f"Erro ao filtrar dados: {str(e)}")
-            filtered_df = safe_display  # Use unfiltered data as fallback
-        
-        st.dataframe(filtered_df)
-        
-        # Export the filtered or full dataset
-        if st.button("Exportar Dados Filtrados"):
-            excel_filtered = exportar_novo_excel(resultado_edicao if selected_status == 'Todos' 
-                                               else resultado_edicao[resultado_edicao['Status'] == selected_status])
-            st.download_button(
-                label="Baixar Arquivo Excel",
-                data=excel_filtered,
-                file_name=f"resultado_filtrado_{selected_status}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    else:
-        st.info("Por favor, primeiro processe os dados na aba 'Processamento Inicial'.")
-
-st.sidebar.markdown("---")
-st.sidebar.info("""
-**Como usar:**
-1. Faça o upload dos arquivos necessários.
-2. Defina a data limite de admissão.
-3. Na aba 'Processamento Inicial', clique em 'Processar Dados'.
-4. Revise os resultados e vá para 'Edição e Exportação' para ajustar valores e exportar.
-5. O relatório final conterá abas para:
-   - Funcionários com Direito
-   - Funcionários sem Direito
-   - Funcionários Aguardando Decisão
-   - Resumo do processamento
-""")
+                            # Opção para exportar
+                            excel_data = exportar_novo_excel(resultado)
+                            st.download_button(
+                                label="Baixar Resultados (Excel)",
+                                data=excel_data,
+                                file_name=f"resultado_ausencias_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
