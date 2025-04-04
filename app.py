@@ -41,13 +41,27 @@ def carregar_arquivo_ausencias(uploaded_file):
     try:
         df = pd.read_excel(uploaded_file)
         df.columns = [col.strip() for col in df.columns]
+
+        # Converter coluna "Dia" para datetime
         if 'Dia' in df.columns:
             df['Dia'] = df['Dia'].astype(str)
             df['Dia'] = df['Dia'].apply(converter_data_br_para_datetime)
+
+        # Converter coluna "Data de Demissão" para datetime
         if 'Data de Demissão' in df.columns:
             df['Data de Demissão'] = df['Data de Demissão'].astype(str)
             df['Data de Demissão'] = df['Data de Demissão'].apply(converter_data_br_para_datetime)
+
+        # Converter "Ausência Integral" e "Ausência Parcial" para horas decimais (ex: 01:30 → 1.5 horas)
+        for col in ['Ausência Integral', 'Ausência Parcial']:
+            if col in df.columns:
+                try:
+                    df[col] = pd.to_timedelta(df[col], errors='coerce').dt.total_seconds() / 3600
+                except Exception as e:
+                    st.warning(f"Erro ao converter a coluna '{col}' para horas decimais: {e}")
+
         return df
+
     except Exception as e:
         st.error(f"Erro ao carregar arquivo de ausências: {e}")
         return pd.DataFrame()
