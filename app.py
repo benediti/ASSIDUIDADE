@@ -358,17 +358,26 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 if not resultado.empty:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    # Converter todas as colunas para string para exibição
+                    # Converter todas as colunas para string para exibição, com tratamento de NaNs
                     df_display = resultado.copy()
                     for col in df_display.columns:
-                        df_display[col] = df_display[col].astype(str)
-                    st.write("Primeiras linhas do DataFrame:")
+                        if pd.api.types.is_datetime64_any_dtype(df_display[col]):
+                            df_display[col] = df_display[col].dt.strftime('%d/%m/%Y').fillna('')  # Formata datas
+                        else:
+                            df_display[col] = df_display[col].astype(str).fillna('')  # Converte para string e preenche NaNs
+
+                    # Debugging adicional
+                    st.write("Primeiras linhas do DataFrame (antes do erro):")
                     st.write(df_display.head())
-                    st.write("Tipos de dados das colunas:")
+                    st.write("Tipos de dados das colunas (antes do erro):")
                     st.write(df_display.dtypes)
-                    st.write("Distribuição dos status:", df_display['Status'].value_counts())
-                    st.subheader("Resultados Preliminares")
-                    st.dataframe(df_display)
+
+                    try:
+                        st.subheader("Resultados Preliminares")
+                        st.dataframe(df_display)
+                    except Exception as e:
+                        st.error(f"Erro ao exibir o DataFrame: {e}")
+
                     total_a_pagar = resultado['Valor_Premio'].sum()
                     contagem_por_status = resultado['Status'].value_counts()
                     st.subheader("Resumo")
