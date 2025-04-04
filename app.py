@@ -155,37 +155,37 @@ def aplicar_regras_pagamento(df):
     df['Cor'] = ''
     df['Observacoes'] = ''
     funcoes_sem_direito = [
-        'AUX DE SERV GERAIS (INT)', 
+        'AUX DE SERV GERAIS (INT)',
         'AUX DE LIMPEZA (INT)',
-        'LIMPADOR DE VIDROS INT', 
-        'RECEPCIONISTA INTERMITENTE', 
+        'LIMPADOR DE VIDROS INT',
+        'RECEPCIONISTA INTERMITENTE',
         'PORTEIRO INTERMITENTE'
     ]
     afastamentos_com_direito = [
-        'Abonado Gerencia Loja', 
+        'Abonado Gerencia Loja',
         'Abono Administrativo'
     ]
     afastamentos_aguardar_decisao = [
         'Atraso'
     ]
     afastamentos_sem_direito = [
-        'Atestado Médico', 
-        'Atestado de Óbito', 
-        'Folga Gestor', 
+        'Atestado Médico',
+        'Atestado de Óbito',
+        'Folga Gestor',
         'Licença Paternidade',
-        'Licença Casamento', 
-        'Acidente de Trabalho', 
-        'Auxilio Doença', 
-        'Primeira Suspensão', 
-        'Segunda Suspensão', 
-        'Férias', 
-        'Abono Atraso', 
-        'Falta não justificada', 
-        'Processo Atraso', 
-        'Confraternização universal', 
-        'Atestado Médico (dias)', 
+        'Licença Casamento',
+        'Acidente de Trabalho',
+        'Auxilio Doença',
+        'Primeira Suspensão',
+        'Segunda Suspensão',
+        'Férias',
+        'Abono Atraso',
+        'Falta não justificada',
+        'Processo Atraso',
+        'Confraternização universal',
+        'Atestado Médico (dias)',
         'Declaração Comparecimento Medico',
-        'Processo Trabalhista', 
+        'Processo Trabalhista',
         'Licença Maternidade'
     ]
     for idx, row in df.iterrows():
@@ -244,7 +244,7 @@ def aplicar_regras_pagamento(df):
                 df.at[idx, 'Cor'] = 'azul'
                 df.at[idx, 'Observacoes'] = f'Afastamento não classificado: {tipo_afastamento}'
                 continue
-        if (('Ausência Integral' in df.columns and not pd.isna(row.get('Ausência Integral'))) or 
+        if (('Ausência Integral' in df.columns and not pd.isna(row.get('Ausência Integral'))) or
             ('Ausência Parcial' in df.columns and not pd.isna(row.get('Ausência Parcial')))):
             df.at[idx, 'Valor a Pagar'] = 0.0
             df.at[idx, 'Status'] = 'Aguardando decisão'
@@ -328,6 +328,7 @@ def exportar_novo_excel(df):
             [f'Valor Total dos Prêmios: R$ {df_tem_direito["Valor_Premio"].sum():,.2f}'],
         ]
         pd.DataFrame(resumo_data).to_excel(writer, index=False, header=False, sheet_name='Resumo')
+        writer.save() # Salva o arquivo Excel
     output.seek(0)
     return output.getvalue()
 
@@ -346,7 +347,6 @@ data_limite = st.sidebar.date_input(
 tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
 
 with tab1:
-    resultado = pd.DataFrame()  # Inicializa resultado
     processar = st.button("Processar Dados")
     if processar:
         if arquivo_ausencias is not None and arquivo_funcionarios is not None:
@@ -358,26 +358,23 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 if not resultado.empty:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    # Converter todas as colunas para string para exibição, com tratamento de NaNs
+                    # Converter todas as colunas para string para exibição
                     df_display = resultado.copy()
                     for col in df_display.columns:
                         if pd.api.types.is_datetime64_any_dtype(df_display[col]):
                             df_display[col] = df_display[col].dt.strftime('%d/%m/%Y').fillna('')  # Formata datas
                         else:
                             df_display[col] = df_display[col].astype(str).fillna('')  # Converte para string e preenche NaNs
-
-                    # Debugging adicional
-                    st.write("Primeiras linhas do DataFrame (antes do erro):")
+                    st.write("Primeiras linhas do DataFrame:")
                     st.write(df_display.head())
-                    st.write("Tipos de dados das colunas (antes do erro):")
+                    st.write("Tipos de dados das colunas:")
                     st.write(df_display.dtypes)
-
+                    st.write("Distribuição dos status:", df_display['Status'].value_counts())
                     try:
                         st.subheader("Resultados Preliminares")
                         st.dataframe(df_display)
                     except Exception as e:
                         st.error(f"Erro ao exibir o DataFrame: {e}")
-
                     total_a_pagar = resultado['Valor_Premio'].sum()
                     contagem_por_status = resultado['Status'].value_counts()
                     st.subheader("Resumo")
@@ -388,7 +385,6 @@ with tab1:
                         st.write("Contagem por Status:")
                         st.write(contagem_por_status)
                     st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
-
                     st.session_state.resultado_processado = resultado  # Armazena o resultado
                 else:
                     st.warning("Nenhum resultado encontrado.")
@@ -398,6 +394,11 @@ with tab1:
 with tab2:
     if 'resultado_processado' in st.session_state:
         st.dataframe(st.session_state.resultado_processado)
+        df_para_exportar = st.session_state.resultado_processado.copy() # Garante que estamos trabalhando com uma cópia
+        nome_arquivo = "relatorio_ausencias.xlsx"
+        dados_excel = exportar_novo_excel(df_para_exportar)
+        st.download_button(label="Baixar Relatório Excel", data=dados_excel, file_name=nome_arquivo, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     else:
         st.info("Por favor, primeiro processe os dados na aba 'Processamento Inicial'.")
 
