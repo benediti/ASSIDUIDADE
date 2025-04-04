@@ -122,6 +122,8 @@ def consolidar_dados_funcionario(df_combinado):
     return df_consolidado
 
 def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=None):
+    st.write("Chegou aqui: Início do processamento")
+    st.write("Data limite de admissão recebida:", data_limite_admissao)
     if df_ausencias.empty or df_funcionarios.empty:
         st.warning("Um ou mais arquivos não puderam ser carregados corretamente.")
         return pd.DataFrame()
@@ -141,6 +143,7 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
             right_on='Matricula',
             how='left'
         )
+        # Remover colunas duplicadas após o merge
         df_combinado = df_combinado.loc[:, ~df_combinado.columns.duplicated()]
         if not df_afastamentos.empty:
             if 'Matricula' in df_afastamentos.columns:
@@ -156,6 +159,7 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
                 df_combinado = df_combinado.loc[:, ~df_combinado.columns.duplicated()]
         df_consolidado = consolidar_dados_funcionario(df_combinado)
         df_final = aplicar_regras_pagamento(df_consolidado)
+        st.write("Chegou aqui: Fim do processamento")
         return df_final
     else:
         st.warning("Aviso: Colunas de Matricula não encontradas em um ou ambos os arquivos.")
@@ -343,10 +347,22 @@ def exportar_novo_excel(df):
     output.seek(0)
     return output.getvalue()
 
+# Sidebar - Upload de Arquivos
 st.sidebar.header("Upload de Arquivos")
 arquivo_ausencias = st.sidebar.file_uploader("Arquivo de Ausências", type=["xlsx", "xls"])
 arquivo_funcionarios = st.sidebar.file_uploader("Arquivo de Funcionários", type=["xlsx", "xls"])
 arquivo_afastamentos = st.sidebar.file_uploader("Arquivo de Afastamentos (opcional)", type=["xlsx", "xls"])
+
+# Verificar se os arquivos foram carregados
+if arquivo_ausencias is not None:
+    st.sidebar.write("Arquivo de ausências carregado com sucesso.")
+else:
+    st.sidebar.error("Erro ao carregar o arquivo de ausências.")
+
+if arquivo_funcionarios is not None:
+    st.sidebar.write("Arquivo de funcionários carregado com sucesso.")
+else:
+    st.sidebar.error("Erro ao carregar o arquivo de funcionários.")
 
 st.sidebar.header("Data Limite de Admissão")
 data_limite = st.sidebar.date_input(
@@ -354,17 +370,27 @@ data_limite = st.sidebar.date_input(
     value=datetime(2025, 3, 1)
 )
 
+# Tabs para Processamento e Exportação
 tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
 
 with tab1:
     processar = st.button("Processar Dados")
     if processar:
+        st.write("Chegou aqui: Início da etapa de processamento")
         if arquivo_ausencias is not None and arquivo_funcionarios is not None:
             with st.spinner("Processando arquivos..."):
                 df_ausencias = carregar_arquivo_ausencias(arquivo_ausencias)
                 df_funcionarios = carregar_arquivo_funcionarios(arquivo_funcionarios)
                 df_afastamentos = carregar_arquivo_afastamentos(arquivo_afastamentos)
+                
+                # Verificar as colunas dos DataFrames
+                if not df_ausencias.empty:
+                    st.write("Colunas do arquivo de ausências:", df_ausencias.columns.tolist())
+                if not df_funcionarios.empty:
+                    st.write("Colunas do arquivo de funcionários:", df_funcionarios.columns.tolist())
+                
                 data_limite_str = data_limite.strftime("%d/%m/%Y")
+                st.write("Data limite de admissão:", data_limite_str)
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 if not resultado.empty:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
