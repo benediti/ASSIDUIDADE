@@ -141,7 +141,6 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
             right_on='Matricula',
             how='left'
         )
-        # Remover colunas duplicadas após o merge
         df_combinado = df_combinado.loc[:, ~df_combinado.columns.duplicated()]
         if not df_afastamentos.empty:
             if 'Matricula' in df_afastamentos.columns:
@@ -154,7 +153,6 @@ def processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_
                     how='left',
                     suffixes=('', '_afastamento')
                 )
-                # Remover novamente colunas duplicadas, se houver
                 df_combinado = df_combinado.loc[:, ~df_combinado.columns.duplicated()]
         df_consolidado = consolidar_dados_funcionario(df_combinado)
         df_final = aplicar_regras_pagamento(df_consolidado)
@@ -353,8 +351,7 @@ arquivo_afastamentos = st.sidebar.file_uploader("Arquivo de Afastamentos (opcion
 st.sidebar.header("Data Limite de Admissão")
 data_limite = st.sidebar.date_input(
     "Considerar apenas funcionários admitidos até:",
-    value=datetime(2025, 3, 1),
-    format="DD/MM/YYYY"
+    value=datetime(2025, 3, 1)
 )
 
 tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
@@ -371,7 +368,6 @@ with tab1:
                 resultado = processar_dados(df_ausencias, df_funcionarios, df_afastamentos, data_limite_admissao=data_limite_str)
                 if not resultado.empty:
                     st.success(f"Processamento concluído com sucesso. {len(resultado)} registros encontrados.")
-                    # Converter todas as colunas para string para exibição
                     df_display = resultado.copy()
                     for col in df_display.columns:
                         df_display[col] = df_display[col].astype(str)
