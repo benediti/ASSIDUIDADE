@@ -346,6 +346,7 @@ data_limite = st.sidebar.date_input(
 tab1, tab2 = st.tabs(["Processamento Inicial", "Edição e Exportação"])
 
 with tab1:
+    resultado = pd.DataFrame()  # Inicializa resultado
     processar = st.button("Processar Dados")
     if processar:
         if arquivo_ausencias is not None and arquivo_funcionarios is not None:
@@ -378,6 +379,8 @@ with tab1:
                         st.write("Contagem por Status:")
                         st.write(contagem_por_status)
                     st.info("Vá para a aba 'Edição e Exportação' para ajustar os valores e exportar o resultado final.")
+
+                    st.session_state.resultado_processado = resultado  # Armazena o resultado
                 else:
                     st.warning("Nenhum resultado encontrado.")
         else:
