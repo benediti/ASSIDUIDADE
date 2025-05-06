@@ -14,11 +14,18 @@ logging.basicConfig(
 )
 
 def carregar_tipos_afastamento():
+    # Verificar se o diretório 'data' existe e criá-lo se não existir
+    if not os.path.exists("data"):
+        os.makedirs("data")
+        
     if os.path.exists("data/tipos_afastamento.pkl"):
         return pd.read_pickle("data/tipos_afastamento.pkl")
     return pd.DataFrame({"tipo": [], "categoria": []})
 
 def salvar_tipos_afastamento(df):
+    # Verificar se o diretório 'data' existe e criá-lo se não existir
+    if not os.path.exists("data"):
+        os.makedirs("data")
     df.to_pickle("data/tipos_afastamento.pkl")
     
 def processar_ausencias(df):
