@@ -159,6 +159,10 @@ def exportar_novo_excel(df):
             st.warning("Nenhum funcionário com direito ao prêmio foi encontrado.")
             return None
         
+        # Garantir que a coluna 'Observacoes' exista
+        if 'Observacoes' not in df_direito.columns:
+            df_direito['Observacoes'] = ''  # Adicione uma coluna vazia
+        
         # Selecionar colunas para exportação
         df_exportar = df_direito[['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']]
         
