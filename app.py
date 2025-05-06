@@ -57,7 +57,24 @@ def processar_ausencias(df):
             return 0
     
     df['Horas_Atraso'] = df['Ausencia_Parcial'].apply(converter_para_horas)
+    
+    # Processar informações de atraso na coluna Ausência Parcial
+    df['Tem_Atraso'] = df['Ausencia_Parcial'].fillna('').astype(str).str.contains('Atraso', case=False)
+    
+    # Adicionar "Atraso" aos afastamentos quando encontrado na coluna Ausência Parcial
+    df['Afastamentos'] = df.apply(
+        lambda row: row['Afastamentos'] + '; Atraso' if row['Tem_Atraso'] and 'Atraso' not in str(row['Afastamentos']) 
+        else row['Afastamentos'],
+        axis=1
+    )
+    
     df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
+    
+    # Armazenar os valores de atraso para uso posterior
+    df['Atrasos'] = df.apply(
+        lambda row: row['Ausencia_Parcial'] if row['Tem_Atraso'] else '',
+        axis=1
+    )
     
     # Carregar tipos de afastamento
     df_tipos = carregar_tipos_afastamento()
@@ -120,12 +137,18 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         if not ausencias.empty:
             afastamentos = ' '.join(ausencias['Afastamentos'].fillna('').astype(str)).lower()
             
+            # Verificar se tem atraso na coluna Ausência Parcial
+            tem_atraso_na_coluna = ausencias['Tem_Atraso'].any() if 'Tem_Atraso' in ausencias.columns else False
+            
             for afastamento in afastamentos_impeditivos:
                 if afastamento.lower() in afastamentos:
                     tem_afastamento_impeditivo = True
                     break
             
-            if not tem_afastamento_impeditivo:
+            # Se tem atraso na coluna Ausência Parcial, considerar como tendo afastamento decisão
+            if tem_atraso_na_coluna:
+                tem_afastamento_decisao = True
+            elif not tem_afastamento_impeditivo:
                 for afastamento in afastamentos_decisao:
                     if afastamento.lower() in afastamentos:
                         tem_afastamento_decisao = True
@@ -145,7 +168,14 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         if not tem_afastamento_impeditivo:
             if tem_afastamento_decisao:
                 status = "Aguardando decisão"
-                total_atrasos = ausencias['Atrasos'].iloc[0] if not ausencias.empty else ""
+                # Pegar todos os atrasos do funcionário e juntá-los
+                if not ausencias.empty and 'Atrasos' in ausencias.columns:
+                    atrasos_list = ausencias['Atrasos'].dropna().tolist()
+                    total_atrasos = "; ".join([a for a in atrasos_list if a])
+                elif not ausencias.empty and 'Ausencia_Parcial' in ausencias.columns:
+                    # Backup: usar Ausencia_Parcial se Atrasos não existir
+                    atrasos_list = ausencias['Ausencia_Parcial'].dropna().tolist()
+                    total_atrasos = "; ".join([a for a in atrasos_list if a and 'Atraso' in a])
             elif tem_apenas_permitidos or ausencias.empty:
                 status = "Tem direito"
         
