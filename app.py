@@ -219,7 +219,6 @@ def main():
         if uploaded_tipos is not None:
     try:
         df_tipos_novo = pd.read_excel(uploaded_tipos)
-        
         # Verificar se as colunas do arquivo carregado estão corretas
         if 'tipo de afastamento' in df_tipos_novo.columns and 'Direito Pagamento' in df_tipos_novo.columns:
             # Renomear as colunas para os nomes esperados pelo sistema
