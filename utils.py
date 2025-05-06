@@ -152,25 +152,32 @@ def editar_valores_status(df):
 def exportar_novo_excel(df):
     try:
         output = io.BytesIO()
-        
-        # Filtrar funcionários com direito ao prêmio
-        df_direito = df[df['Status'].str.contains('Tem direito', na=False)].copy()
-        if df_direito.empty:
-            st.warning("Nenhum funcionário com direito ao prêmio foi encontrado.")
-            return None
-        
-        # Garantir que a coluna 'Observacoes' exista
-        if 'Observacoes' not in df_direito.columns:
-            df_direito['Observacoes'] = ''  # Adicione uma coluna vazia
-        
-        # Selecionar colunas para exportação
-        df_exportar = df_direito[['Matricula', 'Nome', 'Local', 'Valor_Premio', 'Observacoes']]
-        
+
+        # Categorizar os funcionários por status
+        df_tem_direito = df[df['Status'].str.contains('Tem direito', na=False)].copy()
+        df_nao_tem_direito = df[df['Status'].str.contains('Não tem direito', na=False)].copy()
+        df_aguardando_decisao = df[df['Status'].str.contains('Aguardando decisão', na=False)].copy()
+
         # Criar o arquivo Excel
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             # Aba com os funcionários com direito
-            df_exportar.to_excel(writer, index=False, sheet_name='Funcionários com Direito')
-            
+            if not df_tem_direito.empty:
+                df_tem_direito.to_excel(writer, index=False, sheet_name='Tem Direito')
+            else:
+                st.warning("Nenhum funcionário com direito foi encontrado.")
+
+            # Aba com os funcionários sem direito
+            if not df_nao_tem_direito.empty:
+                df_nao_tem_direito.to_excel(writer, index=False, sheet_name='Não Tem Direito')
+            else:
+                st.warning("Nenhum funcionário sem direito foi encontrado.")
+
+            # Aba com os funcionários aguardando decisão
+            if not df_aguardando_decisao.empty:
+                df_aguardando_decisao.to_excel(writer, index=False, sheet_name='Aguardando Decisão')
+            else:
+                st.warning("Nenhum funcionário aguardando decisão foi encontrado.")
+
             # Aba com o resumo
             resumo_data = [
                 ['RESUMO DO PROCESSAMENTO'],
@@ -178,19 +185,21 @@ def exportar_novo_excel(df):
                 [''],
                 ['Métricas Gerais'],
                 [f'Total de Funcionários Processados: {len(df)}'],
-                [f'Total de Funcionários com Direito: {len(df_direito)}'],
-                [f'Valor Total dos Prêmios: R$ {df_direito["Valor_Premio"].sum():,.2f}'],
+                [f'Total de Funcionários com Direito: {len(df_tem_direito)}'],
+                [f'Total de Funcionários sem Direito: {len(df_nao_tem_direito)}'],
+                [f'Total de Funcionários Aguardando Decisão: {len(df_aguardando_decisao)}'],
             ]
             
             pd.DataFrame(resumo_data).to_excel(
-                writer, 
-                index=False, 
-                header=False, 
+                writer,
+                index=False,
+                header=False,
                 sheet_name='Resumo'
             )
-        
+
         output.seek(0)
         return output.getvalue()
+
     except Exception as e:
         st.error(f"Erro ao exportar relatório: {e}")
         return None
