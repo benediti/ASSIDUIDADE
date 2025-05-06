@@ -42,8 +42,12 @@ def processar_ausencias(df):
     df = df.dropna(subset=['Matricula'])
     df['Matricula'] = df['Matricula'].astype(int)
     
+    # Processar faltas marcadas com X na coluna Falta
     df['Faltas'] = df['Falta'].fillna('')
     df['Faltas'] = df['Faltas'].apply(lambda x: 1 if str(x).upper().strip() == 'X' else 0)
+    
+    # Detectar faltas não justificadas na coluna Ausência Parcial
+    df['Tem_Falta_Nao_Justificada'] = df['Ausencia_Parcial'].fillna('').astype(str).str.contains('Falta não justificada', case=False)
     
     def converter_para_horas(tempo):
         if pd.isna(tempo) or tempo == '' or tempo == '00:00':
@@ -61,9 +65,17 @@ def processar_ausencias(df):
     # Processar informações de atraso na coluna Ausência Parcial
     df['Tem_Atraso'] = df['Ausencia_Parcial'].fillna('').astype(str).str.contains('Atraso', case=False)
     
-    # Adicionar "Atraso" aos afastamentos quando encontrado na coluna Ausência Parcial
+    # Adicionar tipos de afastamento à coluna Afastamentos quando encontrados na coluna Ausência Parcial
     df['Afastamentos'] = df.apply(
         lambda row: row['Afastamentos'] + '; Atraso' if row['Tem_Atraso'] and 'Atraso' not in str(row['Afastamentos']) 
+        else row['Afastamentos'],
+        axis=1
+    )
+    
+    # Adicionar Falta não justificada aos afastamentos quando encontrado na coluna Ausência Parcial ou Falta é X
+    df['Afastamentos'] = df.apply(
+        lambda row: row['Afastamentos'] + '; Falta não justificada' 
+        if (row['Tem_Falta_Nao_Justificada'] or row['Faltas'] == 1) and 'Falta não justificada' not in str(row['Afastamentos']) 
         else row['Afastamentos'],
         axis=1
     )
@@ -95,7 +107,7 @@ def processar_ausencias(df):
         return "Tem Direito"
     
     afastamentos_impeditivos = [
-        "Licença Maternidade", "Atestado Médico", "Férias", "Feriado"
+        "Licença Maternidade", "Atestado Médico", "Férias", "Feriado", "Falta não justificada"
     ]
     afastamentos_decisao = ["Abono", "Atraso"]
     
