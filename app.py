@@ -138,15 +138,24 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
             afastamentos = ' '.join(ausencias['Afastamentos'].fillna('').astype(str)).lower()
             
             # Verificar se tem atraso na coluna Ausência Parcial
-            tem_atraso_na_coluna = ausencias['Tem_Atraso'].any() if 'Tem_Atraso' in ausencias.columns else False
+            tem_atraso_na_coluna = False
+            if 'Tem_Atraso' in ausencias.columns:
+                tem_atraso_na_coluna = ausencias['Tem_Atraso'].any()
+            else:
+                # Verificação alternativa se a coluna Tem_Atraso não existir
+                tem_atraso_na_coluna = ausencias['Ausencia_Parcial'].fillna('').astype(str).str.contains('Atraso', case=False).any()
             
+            # Verificar se Atraso está na lista de afastamentos
+            tem_atraso_nos_afastamentos = 'atraso' in afastamentos
+            
+            # Verificar impeditivos
             for afastamento in afastamentos_impeditivos:
                 if afastamento.lower() in afastamentos:
                     tem_afastamento_impeditivo = True
                     break
             
-            # Se tem atraso na coluna Ausência Parcial, considerar como tendo afastamento decisão
-            if tem_atraso_na_coluna:
+            # Se tem atraso em qualquer lugar, considerar como tendo afastamento decisão
+            if tem_atraso_na_coluna or tem_atraso_nos_afastamentos:
                 tem_afastamento_decisao = True
             elif not tem_afastamento_impeditivo:
                 for afastamento in afastamentos_decisao:
@@ -165,8 +174,15 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         status = "Não tem direito"
         total_atrasos = ""
         
+        # Priorizar a verificação para Atraso
         if not tem_afastamento_impeditivo:
-            if tem_afastamento_decisao:
+            if 'Atraso' in ausencias['Detalhes_Afastamentos'].iloc[0] if not ausencias.empty and 'Detalhes_Afastamentos' in ausencias.columns else False:
+                status = "Aguardando decisão"
+                # Extrair informações de atraso da tabela de ausências
+                if 'Ausencia_Parcial' in ausencias.columns:
+                    atrasos_list = ausencias['Ausencia_Parcial'].dropna().tolist()
+                    total_atrasos = "; ".join([a for a in atrasos_list if a and 'Atraso' in a])
+            elif tem_afastamento_decisao:
                 status = "Aguardando decisão"
                 # Pegar todos os atrasos do funcionário e juntá-los
                 if not ausencias.empty and 'Atrasos' in ausencias.columns:
@@ -178,6 +194,11 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
                     total_atrasos = "; ".join([a for a in atrasos_list if a and 'Atraso' in a])
             elif tem_apenas_permitidos or ausencias.empty:
                 status = "Tem direito"
+        
+        # Override final: Se os detalhes de afastamentos contêm "Atraso", garantir que o status é "Aguardando decisão"
+        if not ausencias.empty and 'Detalhes_Afastamentos' in resultados[-1] if resultados else False:
+            if 'Atraso' in resultados[-1]['Detalhes_Afastamentos']:
+                resultados[-1]['Status'] = "Aguardando decisão"
         
         resultados.append({
             'Matricula': func['Matricula'],
@@ -191,6 +212,11 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
             'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else '',
             'Observações': ''
         })
+        
+        # Correção final: Se 'Atraso' aparece nos detalhes de afastamentos do último resultado adicionado
+        if resultados and 'Detalhes_Afastamentos' in resultados[-1]:
+            if 'Atraso' in str(resultados[-1]['Detalhes_Afastamentos']):
+                resultados[-1]['Status'] = resultados[-1]['Status'].replace("Não tem direito", "Aguardando decisão")
     
     return pd.DataFrame(resultados)
 
