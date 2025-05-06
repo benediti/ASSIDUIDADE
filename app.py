@@ -20,8 +20,8 @@ def carregar_tipos_afastamento():
 
 def salvar_tipos_afastamento(df):
     df.to_pickle("data/tipos_afastamento.pkl")
-
 def processar_ausencias(df):
+    # Renomear colunas e configurar dados iniciais
     df = df.rename(columns={
         "Matrícula": "Matricula",
         "Centro de Custo": "Centro_de_Custo",
@@ -43,7 +43,7 @@ def processar_ausencias(df):
         try:
             if ':' in str(tempo):
                 horas, minutos = map(int, str(tempo).split(':'))
-                return horas + minutos/60
+                return horas + minutos / 60
             return 0
         except:
             return 0
@@ -51,23 +51,33 @@ def processar_ausencias(df):
     df['Horas_Atraso'] = df['Ausencia_Parcial'].apply(converter_para_horas)
     df['Afastamentos'] = df['Afastamentos'].fillna('').astype(str)
     
-    resultado = df.groupby('Matricula').agg({
-        'Faltas': 'sum',
-        'Horas_Atraso': 'sum',
-        'Afastamentos': lambda x: '; '.join(sorted(set(filter(None, x))))
-    }).reset_index()
-    
-    resultado['Atrasos'] = resultado['Horas_Atraso'].apply(
-        lambda x: f"{int(x)}:{int((x % 1) * 60):02d}" if x > 0 else ""
-    )
-    resultado = resultado.drop('Horas_Atraso', axis=1)
-    
+    # Carregar tipos de afastamento
     df_tipos = carregar_tipos_afastamento()
-    for tipo in df_tipos['tipo'].unique():
-        resultado[tipo] = resultado['Afastamentos'].str.contains(tipo, case=False).astype(int)
-        resultado[tipo] = resultado[tipo].apply(lambda x: x if x > 0 else "")
+    tipos_conhecidos = df_tipos['tipo'].unique() if not df_tipos.empty else []
+
+    # Identificar afastamentos desconhecidos
+    df['Afastamentos_Desconhecidos'] = df['Afastamentos'].apply(
+        lambda x: '; '.join([a for a in x.split(';') if a.strip() not in tipos_conhecidos])
+    )
     
-    return resultado
+    # Classificar status
+    def classificar_status(afastamentos):
+        afastamentos_list = afastamentos.split(';')
+        if any(a.strip() in afastamentos_impeditivos for a in afastamentos_list):
+            return "Não Tem Direito"
+        elif any(a.strip() in afastamentos_decisao for a in afastamentos_list):
+            return "Aguardando Decisão"
+        return "Tem Direito"
+    
+    afastamentos_impeditivos = [
+        "Licença Maternidade", "Atestado Médico", "Férias", "Feriado", ...
+    ]
+    afastamentos_decisao = ["Abono", "Atraso"]
+    
+    df['Status'] = df['Afastamentos'].apply(classificar_status)
+    
+    # Retornar DataFrame atualizado
+    return df
 
 def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
     afastamentos_impeditivos = [
