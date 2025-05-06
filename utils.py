@@ -152,6 +152,63 @@ def editar_valores_status(df):
 def exportar_novo_excel(df):
     try:
         output = io.BytesIO()
+        
+        # Garantir que cada funcionário tenha apenas uma linha no dataframe final
+        # Agrupando por Matricula e conservando as informações relevantes
+        if 'Matricula' in df.columns and len(df) > 0:
+            # Garantir que o DataFrame já esteja agrupado por Matrícula (deve estar, após calcular_premio)
+            if df['Matricula'].duplicated().any():
+                st.warning("Foram encontradas múltiplas linhas por funcionário. Agrupando automaticamente...")
+                
+                # Funções para agregação
+                def agregar_detalhes(x):
+                    # Juntar todos os detalhes de afastamentos únicos
+                    detalhes = []
+                    for detalhe in x:
+                        if isinstance(detalhe, str) and detalhe:
+                            for d in detalhe.split(';'):
+                                d = d.strip()
+                                if d and d not in detalhes:
+                                    detalhes.append(d)
+                    return "; ".join(detalhes) if detalhes else ""
+                
+                def priorizar_status(x):
+                    # Prioridade: Não tem direito > Aguardando decisão > Tem direito
+                    if "Não tem direito" in x.values:
+                        return "Não tem direito"
+                    elif "Aguardando decisão" in x.values:
+                        for status in x.values:
+                            if isinstance(status, str) and "Aguardando decisão" in status:
+                                return status  # Retorna com os detalhes de atraso
+                        return "Aguardando decisão"
+                    else:
+                        return "Tem direito"
+                
+                def maior_valor(x):
+                    return x.max()
+                
+                def primeiro_valor(x):
+                    return x.iloc[0] if not x.empty else ""
+                
+                # Definir agregações por coluna
+                agregacoes = {
+                    'Nome': 'first',
+                    'Cargo': 'first',
+                    'Local': 'first',
+                    'Horas_Mensais': 'first',
+                    'Data_Admissao': 'first',
+                    'Status': priorizar_status,
+                    'Valor_Premio': maior_valor,
+                    'Detalhes_Afastamentos': agregar_detalhes,
+                    'Observações': 'first' if 'Observações' in df.columns else None,
+                    'Observacoes': 'first' if 'Observacoes' in df.columns else None
+                }
+                
+                # Remover colunas que não existem no DataFrame
+                agregacoes = {k: v for k, v in agregacoes.items() if k in df.columns}
+                
+                # Agrupar o DataFrame
+                df = df.groupby('Matricula').agg(agregacoes).reset_index()
 
         # Categorizar os funcionários por status
         df_tem_direito = df[df['Status'].str.contains('Tem direito', na=False)].copy()
