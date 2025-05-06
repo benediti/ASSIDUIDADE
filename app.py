@@ -71,7 +71,7 @@ def processar_ausencias(df):
         return "Tem Direito"
     
     afastamentos_impeditivos = [
-        "Licença Maternidade", "Atestado Médico", "Férias", "Feriado", ...
+        "Licença Maternidade", "Atestado Médico", "Férias", "Feriado"
     ]
     afastamentos_decisao = ["Abono", "Atraso"]
     
@@ -217,18 +217,18 @@ def main():
         uploaded_tipos = st.file_uploader("Atualizar tipos de afastamento", type=['xlsx'])
         
         if uploaded_tipos is not None:
-    try:
-        df_tipos_novo = pd.read_excel(uploaded_tipos)
-        # Verificar se as colunas do arquivo carregado estão corretas
-        if 'tipo de afastamento' in df_tipos_novo.columns and 'Direito Pagamento' in df_tipos_novo.columns:
-            # Renomear as colunas para os nomes esperados pelo sistema
-            df_tipos = df_tipos_novo.rename(columns={'tipo de afastamento': 'tipo', 'Direito Pagamento': 'categoria'})
-            salvar_tipos_afastamento(df_tipos)
-            st.success("Tipos de afastamento atualizados!")
-        else:
-            st.error("Arquivo deve conter colunas 'tipo de afastamento' e 'Direito Pagamento'")
-    except Exception as e:
-        st.error(f"Erro ao processar arquivo: {str(e)}")
+            try:
+                df_tipos_novo = pd.read_excel(uploaded_tipos)
+                # Verificar se as colunas do arquivo carregado estão corretas
+                if 'tipo de afastamento' in df_tipos_novo.columns and 'Direito Pagamento' in df_tipos_novo.columns:
+                    # Renomear as colunas para os nomes esperados pelo sistema
+                    df_tipos = df_tipos_novo.rename(columns={'tipo de afastamento': 'tipo', 'Direito Pagamento': 'categoria'})
+                    salvar_tipos_afastamento(df_tipos)
+                    st.success("Tipos de afastamento atualizados!")
+                else:
+                    st.error("Arquivo deve conter colunas 'tipo de afastamento' e 'Direito Pagamento'")
+            except Exception as e:
+                st.error(f"Erro ao processar arquivo: {str(e)}")
     
     if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
         try:
@@ -242,11 +242,12 @@ def main():
             
             df_ausencias = pd.read_excel(uploaded_ausencias)
             df_ausencias = processar_ausencias(df_ausencias)
+            
             # Verificar e exibir afastamentos desconhecidos
-if not df_ausencias['Afastamentos_Desconhecidos'].str.strip().eq('').all():
-    st.warning("Foram encontrados afastamentos desconhecidos na tabela de ausências:")
-    st.dataframe(df_ausencias[['Matricula', 'Afastamentos_Desconhecidos']])
-    st.info("Atualize os tipos de afastamento para corrigir essas inconsistências.")
+            if not df_ausencias['Afastamentos_Desconhecidos'].str.strip().eq('').all():
+                st.warning("Foram encontrados afastamentos desconhecidos na tabela de ausências:")
+                st.dataframe(df_ausencias[['Matricula', 'Afastamentos_Desconhecidos']])
+                st.info("Atualize os tipos de afastamento para corrigir essas inconsistências.")
             
             df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
             
