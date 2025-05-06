@@ -105,6 +105,7 @@ def processar_ausencias(df):
     return df
 
 def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
+    # Afastamentos que impedem o recebimento do prêmio
     afastamentos_impeditivos = [
         "Declaração Acompanhante", "Feriado", "Emenda Feriado", 
         "Licença Maternidade", "Declaração INSS (dias)", 
@@ -112,14 +113,17 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         "Atestado Médico", "Atestado de Óbito", "Licença Paternidade",
         "Licença Casamento", "Acidente de Trabalho", "Auxilio Doença",
         "Primeira Suspensão", "Segunda Suspensão", "Férias",
-        "Falta não justificada", "Processo",
-        "Falta não justificada (dias)", "Atestado Médico (dias)"
+        "Falta não justificada", "Processo", "Processo Trabalhista",
+        "Falta não justificada (dias)", "Atestado Médico (dias)",
+        "Declaração Comparecimento Medico", "INSS"
     ]
     
+    # Afastamentos que precisam de decisão
     afastamentos_decisao = ["Abono", "Atraso"]
     
+    # Afastamentos que permitem receber o prêmio
     afastamentos_permitidos = [
-        "Folga Gestor", "Abonado Gerencia Loja",
+        "Folga Gestor", "Abonado Gerencia Loja", "Abono Administrativo",
         "Confraternização universal", "Aniversario de São Paulo"
     ]
     
@@ -136,6 +140,7 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         
         if not ausencias.empty:
             afastamentos = ' '.join(ausencias['Afastamentos'].fillna('').astype(str)).lower()
+            detalhes_afastamentos = ' '.join(ausencias['Detalhes_Afastamentos'].fillna('').astype(str)).lower() if 'Detalhes_Afastamentos' in ausencias.columns else ''
             
             # Verificar se tem atraso na coluna Ausência Parcial
             tem_atraso_na_coluna = False
@@ -145,62 +150,75 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
                 # Verificação alternativa se a coluna Tem_Atraso não existir
                 tem_atraso_na_coluna = ausencias['Ausencia_Parcial'].fillna('').astype(str).str.contains('Atraso', case=False).any()
             
-            # Verificar se Atraso está na lista de afastamentos
-            tem_atraso_nos_afastamentos = 'atraso' in afastamentos
-            
-            # Verificar impeditivos
-            for afastamento in afastamentos_impeditivos:
-                if afastamento.lower() in afastamentos:
-                    tem_afastamento_impeditivo = True
+            # Verificar se está na lista de afastamentos permitidos
+            tem_apenas_afastamento_permitido = False
+            for afastamento in afastamentos_permitidos:
+                if afastamento.lower() in afastamentos.lower() or afastamento.lower() in detalhes_afastamentos.lower():
+                    tem_apenas_afastamento_permitido = True
                     break
             
-            # Se tem atraso em qualquer lugar, considerar como tendo afastamento decisão
-            if tem_atraso_na_coluna or tem_atraso_nos_afastamentos:
-                tem_afastamento_decisao = True
-            elif not tem_afastamento_impeditivo:
-                for afastamento in afastamentos_decisao:
-                    if afastamento.lower() in afastamentos:
-                        tem_afastamento_decisao = True
+            # Se tem afastamento permitido e nenhum outro tipo de afastamento, considerar como tendo direito
+            if tem_apenas_afastamento_permitido:
+                tem_apenas_permitidos = True
+                
+                # Verificar se também tem algum impeditivo
+                for afastamento in afastamentos_impeditivos:
+                    if afastamento.lower() in afastamentos.lower() or afastamento.lower() in detalhes_afastamentos.lower():
+                        tem_afastamento_impeditivo = True
+                        tem_apenas_permitidos = False
                         break
-            
-            tem_apenas_permitidos = not tem_afastamento_impeditivo and not tem_afastamento_decisao
+                        
+                # Verificar se também tem algum afastamento de decisão
+                if not tem_afastamento_impeditivo:
+                    for afastamento in afastamentos_decisao:
+                        if afastamento.lower() in afastamentos.lower() or afastamento.lower() in detalhes_afastamentos.lower():
+                            tem_afastamento_decisao = True
+                            tem_apenas_permitidos = False
+                            break
+            else:
+                # Verificar impeditivos
+                for afastamento in afastamentos_impeditivos:
+                    if afastamento.lower() in afastamentos.lower() or afastamento.lower() in detalhes_afastamentos.lower():
+                        tem_afastamento_impeditivo = True
+                        break
+                
+                # Se tem atraso em qualquer lugar, considerar como tendo afastamento decisão
+                if not tem_afastamento_impeditivo:
+                    if tem_atraso_na_coluna:
+                        tem_afastamento_decisao = True
+                    else:
+                        for afastamento in afastamentos_decisao:
+                            if afastamento.lower() in afastamentos.lower() or afastamento.lower() in detalhes_afastamentos.lower():
+                                tem_afastamento_decisao = True
+                                break
         
+        # Definir valor do prêmio com base nas horas mensais
         valor_premio = 0
         if func['Qtd_Horas_Mensais'] == 220:
             valor_premio = 300.00
         elif func['Qtd_Horas_Mensais'] <= 120:
             valor_premio = 150.00
         
+        # Definir status padrão
         status = "Não tem direito"
         total_atrasos = ""
         
-        # Priorizar a verificação para Atraso
-        if not tem_afastamento_impeditivo:
-            if 'Atraso' in ausencias['Detalhes_Afastamentos'].iloc[0] if not ausencias.empty and 'Detalhes_Afastamentos' in ausencias.columns else False:
-                status = "Aguardando decisão"
-                # Extrair informações de atraso da tabela de ausências
-                if 'Ausencia_Parcial' in ausencias.columns:
-                    atrasos_list = ausencias['Ausencia_Parcial'].dropna().tolist()
-                    total_atrasos = "; ".join([a for a in atrasos_list if a and 'Atraso' in a])
-            elif tem_afastamento_decisao:
-                status = "Aguardando decisão"
-                # Pegar todos os atrasos do funcionário e juntá-los
-                if not ausencias.empty and 'Atrasos' in ausencias.columns:
-                    atrasos_list = ausencias['Atrasos'].dropna().tolist()
-                    total_atrasos = "; ".join([a for a in atrasos_list if a])
-                elif not ausencias.empty and 'Ausencia_Parcial' in ausencias.columns:
-                    # Backup: usar Ausencia_Parcial se Atrasos não existir
-                    atrasos_list = ausencias['Ausencia_Parcial'].dropna().tolist()
-                    total_atrasos = "; ".join([a for a in atrasos_list if a and 'Atraso' in a])
-            elif tem_apenas_permitidos or ausencias.empty:
-                status = "Tem direito"
+        # Determinar status com base nos afastamentos
+        if tem_apenas_permitidos or (not tem_afastamento_impeditivo and not tem_afastamento_decisao):
+            status = "Tem direito"
+        elif not tem_afastamento_impeditivo and tem_afastamento_decisao:
+            status = "Aguardando decisão"
+            # Pegar todos os atrasos do funcionário e juntá-los
+            if not ausencias.empty and 'Atrasos' in ausencias.columns:
+                atrasos_list = ausencias['Atrasos'].dropna().tolist()
+                total_atrasos = "; ".join([a for a in atrasos_list if a])
+            elif not ausencias.empty and 'Ausencia_Parcial' in ausencias.columns:
+                # Backup: usar Ausencia_Parcial se Atrasos não existir
+                atrasos_list = ausencias['Ausencia_Parcial'].dropna().tolist()
+                total_atrasos = "; ".join([a for a in atrasos_list if a and 'Atraso' in a])
         
-        # Override final: Se os detalhes de afastamentos contêm "Atraso", garantir que o status é "Aguardando decisão"
-        if not ausencias.empty and 'Detalhes_Afastamentos' in resultados[-1] if resultados else False:
-            if 'Atraso' in resultados[-1]['Detalhes_Afastamentos']:
-                resultados[-1]['Status'] = "Aguardando decisão"
-        
-        resultados.append({
+        # Criar o dicionário de resultado
+        resultado = {
             'Matricula': func['Matricula'],
             'Nome': func['Nome_Funcionario'],
             'Cargo': func['Cargo'],
@@ -209,14 +227,26 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
             'Data_Admissao': func['Data_Admissao'],
             'Valor_Premio': valor_premio if status == "Tem direito" else 0,
             'Status': f"{status} (Total Atrasos: {total_atrasos})" if status == "Aguardando decisão" and total_atrasos else status,
-            'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty else '',
+            'Detalhes_Afastamentos': ausencias['Afastamentos'].iloc[0] if not ausencias.empty and 'Afastamentos' in ausencias.columns else '',
             'Observações': ''
-        })
+        }
         
-        # Correção final: Se 'Atraso' aparece nos detalhes de afastamentos do último resultado adicionado
-        if resultados and 'Detalhes_Afastamentos' in resultados[-1]:
-            if 'Atraso' in str(resultados[-1]['Detalhes_Afastamentos']):
-                resultados[-1]['Status'] = resultados[-1]['Status'].replace("Não tem direito", "Aguardando decisão")
+        # Verificação final específica para "Abonado Gerencia Loja" - garantir que está como "Tem direito"
+        if not ausencias.empty:
+            detalhes = resultado.get('Detalhes_Afastamentos', '').lower()
+            if 'abonado gerencia loja' in detalhes or 'folga gestor' in detalhes or 'abono administrativo' in detalhes:
+                tem_impeditivo = False
+                # Verificar se também tem algum impeditivo junto
+                for imp in afastamentos_impeditivos:
+                    if imp.lower() in detalhes:
+                        tem_impeditivo = True
+                        break
+                
+                if not tem_impeditivo:
+                    resultado['Status'] = "Tem direito"
+                    resultado['Valor_Premio'] = valor_premio
+        
+        resultados.append(resultado)
     
     return pd.DataFrame(resultados)
 
