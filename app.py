@@ -118,7 +118,7 @@ def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
         valor_premio = 0
         if func['Qtd_Horas_Mensais'] == 220:
             valor_premio = 300.00
-        elif func['Qtd_Horas_Mensais'] <= 110:
+        elif func['Qtd_Horas_Mensais'] <= 120:
             valor_premio = 150.00
         
         status = "Não tem direito"
