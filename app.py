@@ -20,6 +20,7 @@ def carregar_tipos_afastamento():
 
 def salvar_tipos_afastamento(df):
     df.to_pickle("data/tipos_afastamento.pkl")
+    
 def processar_ausencias(df):
     # Renomear colunas e configurar dados iniciais
     df = df.rename(columns={
@@ -239,6 +240,11 @@ def main():
             
             df_ausencias = pd.read_excel(uploaded_ausencias)
             df_ausencias = processar_ausencias(df_ausencias)
+            # Verificar e exibir afastamentos desconhecidos
+if not df_ausencias['Afastamentos_Desconhecidos'].str.strip().eq('').all():
+    st.warning("Foram encontrados afastamentos desconhecidos na tabela de ausências:")
+    st.dataframe(df_ausencias[['Matricula', 'Afastamentos_Desconhecidos']])
+    st.info("Atualize os tipos de afastamento para corrigir essas inconsistências.")
             
             df_resultado = calcular_premio(df_funcionarios, df_ausencias, data_limite)
             
